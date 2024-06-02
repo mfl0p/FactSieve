@@ -1,0 +1,50 @@
+CC = g++
+LD = $(CC)
+
+.SUFFIXES:
+.SUFFIXES: .o .c .h .cl .cpp
+
+VER = 24_6_2
+
+APP = FactSieve-linux64-$(VER)
+
+SRC = main.cpp cl_sieve.cpp cl_sieve.h simpleCL.c simpleCL.h kernels/check.cl kernels/clearn.cl kernels/clearresult.cl kernels/getsegprimes.cl kernels/iterate.cl kernels/powers.cl kernels/setup.cl kernels/check.cl kernels/verifyslow.cl kernels/verifypow.cl kernels/verifyreduce.cl kernels/verifyresult.cl putil.c putil.h verifyprime.c verifyprime.h
+KERNEL_HEADERS = kernels/check.h kernels/clearn.h kernels/clearresult.h kernels/iterate.h kernels/powers.h kernels/setup.h kernels/check.h kernels/getsegprimes.h kernels/verifyslow.h kernels/verifypow.h kernels/verifyreduce.h kernels/verifyresult.h
+OBJ = main.o cl_sieve.o simpleCL.o putil.o verifyprime.o
+
+OCL_INC = -I /usr/local/cuda/include/CL/
+OCL_LIB = -L . -L /usr/local/cuda-10.1/targets/x86_64-linux/lib -lOpenCL -lprimesieve
+
+BOINC_DIR = /home/bryan/boinc
+BOINC_INC = -I$(BOINC_DIR)/lib -I$(BOINC_DIR)/api -I$(BOINC_DIR)
+BOINC_LIB = -L$(BOINC_DIR)/lib -L$(BOINC_DIR)/api -L$(BOINC_DIR) -lboinc_opencl -lboinc_api -lboinc -lpthread
+
+CFLAGS  = -I . -I kernels -O3 -m64 -Wall -DVERS=\"$(VER)\"
+LDFLAGS = $(CFLAGS) -static-libgcc -static-libstdc++ 
+
+all : clean $(APP)
+
+$(APP) : $(OBJ)
+	$(LD) $(LDFLAGS) $^ $(OCL_LIB) $(BOINC_LIB) -o $@
+
+main.o : $(SRC)
+	$(CC) $(CFLAGS) $(OCL_INC) $(BOINC_INC) -c -o $@ main.cpp
+
+cl_sieve.o : $(SRC) $(KERNEL_HEADERS)
+	$(CC) $(CFLAGS) $(OCL_INC) $(BOINC_INC) -c -o $@ cl_sieve.cpp
+
+simpleCL.o : $(SRC)
+	$(CC) $(CFLAGS) $(OCL_INC) $(BOINC_INC) -c -o $@ simpleCL.c
+
+putil.o : $(SRC)
+	$(CC) $(CFLAGS) $(OCL_INC) $(BOINC_INC) -c -o $@ putil.c
+
+verifyprime.o : $(SRC)
+	$(CC) $(CFLAGS) $(OCL_INC) $(BOINC_INC) -c -o $@ verifyprime.c
+
+.cl.h:
+	./cltoh.pl $< > $@
+
+clean :
+	rm -f *.o kernels/*.h $(APP)
+
