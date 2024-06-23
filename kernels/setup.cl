@@ -95,19 +95,19 @@ __kernel void setup(__global ulong8 * g_prime, __global uint * g_primecount,
 			// remaining iterations, starting at prime = 3
 			uint sm_prime = g_smallprimes[i];
 			uint exp = g_smallpowers[i];
-			ulong x = m_mul(sm_prime, prime.s2, prime.s0, prime.s1);
+			const ulong base = m_mul(sm_prime, prime.s2, prime.s0, prime.s1);
 			ulong primepow;
 			if(exp == 1){
-				primepow = x;
+				primepow = base;
 			}
 			else{
 				uint curBit = 0x80000000;
 				curBit >>= ( clz(exp) + 1 );
-				ulong a = x;
+				ulong a = base;
 				while( curBit ){
 					a = m_mul(a, a, prime.s0, prime.s1);
 					if(exp & curBit){
-						a = m_mul(a, x, prime.s0, prime.s1);
+						a = m_mul(a, base, prime.s0, prime.s1);
 					}
 					curBit >>= 1;
 				}

@@ -466,7 +466,7 @@ void getResults( progData pd, searchData & sd, sclHard hardware ){
 		sd.checksum += h_checksum[i];
 	}
 
-	uint32_t * h_primecount = (uint32_t *)malloc(4*sizeof(uint32_t));
+	uint32_t * h_primecount = (uint32_t *)malloc(5*sizeof(uint32_t));
 	if( h_primecount == NULL ){
 		fprintf(stderr,"malloc error\n");
 		exit(EXIT_FAILURE);
@@ -474,7 +474,7 @@ void getResults( progData pd, searchData & sd, sclHard hardware ){
 
 	// copy prime count to host memory
 	// blocking read
-	sclRead(hardware, 4*sizeof(uint32_t), pd.d_primecount, h_primecount);
+	sclRead(hardware, 5*sizeof(uint32_t), pd.d_primecount, h_primecount);
 
 	// largest kernel prime count.  used to check array bounds
 	if(h_primecount[1] > pd.psize){
@@ -487,6 +487,13 @@ void getResults( progData pd, searchData & sd, sclHard hardware ){
 	if(h_primecount[3] == 1){
 		fprintf(stderr,"error: power table verification failed\n");
 		printf("error: power table verification failed\n");
+		exit(EXIT_FAILURE);
+	}
+
+	// flag set if there is a gpu overflow error
+	if(h_primecount[4] == 1){
+		fprintf(stderr,"error: getsegprimes kernel local memory overflow\n");
+		printf("error: getsegprimes kernel local memory overflow\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -573,7 +580,7 @@ void getResults( progData pd, searchData & sd, sclHard hardware ){
 
 		uint64_t lastgoodp = 0;
 
-		printf("prime testing and writing factors to file\n");
+		printf("writing factors to %s\n", RESULTS_FILENAME);
 
 		for(uint32_t m=0; m<h_primecount[2]; ++m){
 
@@ -810,7 +817,7 @@ void cl_sieve( sclHard hardware, searchData & sd ){
 	setupSearch(sd);
 
 	// device arrays
-	pd.d_primecount = clCreateBuffer( hardware.context, CL_MEM_READ_WRITE, 4*sizeof(cl_uint), NULL, &err );
+	pd.d_primecount = clCreateBuffer( hardware.context, CL_MEM_READ_WRITE, 5*sizeof(cl_uint), NULL, &err );
         if ( err != CL_SUCCESS ) {
 		fprintf(stderr, "ERROR: clCreateBuffer failure.\n");
                 printf( "ERROR: clCreateBuffer failure.\n" );
@@ -1058,6 +1065,7 @@ void cl_sieve( sclHard hardware, searchData & sd ){
 	float kernel_ms;
 	uint32_t kernelq = 0;
 	cl_event launchEvent = NULL;
+	const double irsize = 1.0 / (double)(sd.pmax-sd.pmin);
 
 	sclEnqueueKernel(hardware, pd.clearresult);
 
@@ -1076,7 +1084,7 @@ void cl_sieve( sclHard hardware, searchData & sd ){
 		// update BOINC fraction done every 2 sec
 		time(&boinc_curr);
 		if( ((int)boinc_curr - (int)boinc_last) > 1 ){
-    			double fd = (double)(sd.p-sd.pmin)/(double)(sd.pmax-sd.pmin);
+    			double fd = (double)(sd.p-sd.pmin)*irsize;
 			boinc_fraction_done(fd);
 			if(boinc_is_standalone()) printf("Tests done: %.1f%%\n",fd*100.0);
 			boinc_last = boinc_curr;
@@ -1127,10 +1135,9 @@ void cl_sieve( sclHard hardware, searchData & sd ){
 			getResults(pd, sd, hardware);
 			sclEnqueueKernel(hardware, pd.clearresult);
 			sclReleaseMemObject(d_verify);
-			uint64_t pwr_bytes = 2*sizeof(cl_uint)*(uint64_t)smcount;
-			fprintf(stderr,"Setup and verified power table of size %" PRIu64 " Bytes.  Starting sieve...\n",pwr_bytes);
+			fprintf(stderr,"Setup and verified power table with %u terms.  Starting sieve...\n",smcount);
 			if(boinc_is_standalone()){
-				printf("Setup and verified power table of size %" PRIu64 " Bytes.  Starting sieve...\n",pwr_bytes);
+				printf("Setup and verified power table with %u terms.  Starting sieve...\n",smcount);
 			}
 
 			smax = sstart + sd.sstep;

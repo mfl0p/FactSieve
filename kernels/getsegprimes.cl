@@ -185,23 +185,25 @@ __constant uint p113[113] = { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 
 __kernel __attribute__ ((reqd_work_group_size(256, 1, 1))) void getsegprimes(ulong low, ulong high, int wheelidx, __global ulong8 *g_prime, __global uint *g_primecount, const uint startN){
 
-	const uint x = get_global_id(0);
-	const uint y = get_local_id(0);
+	const uint gid = get_global_id(0);
+	const uint lid = get_local_id(0);
 	int idx = wheelidx;
-	__local ulong sieved[3840];
+	__local ulong sieved[1900];
 	__local int count;
 
-	if(y == 0){
+	if(lid == 0){
 		count = 0;
 	}
 	barrier(CLK_LOCAL_MEM_FENCE);
 
 	// each thread is 2 turns of the mod 30 wheel
-	ulong P = low + (x * 60);
+	ulong P = low + (gid * 60);
 
 	ulong end = P + 60;
 
-	if(end > high) end = high;
+	if(end > high){
+		end = high;
+	}
 
 	// sieve small primes to 113, this seems optimal
 	uint bitsieve = p7[P%7] | p11[P%11] | p13[P%13] | p17[P%17] | p19[P%19] | p23[P%23] | p29[P%29] | p31[P%31]
@@ -210,7 +212,6 @@ __kernel __attribute__ ((reqd_work_group_size(256, 1, 1))) void getsegprimes(ulo
 			| p103[P%103] | p107[P%107] | p109[P%109] | p113[P%113];
 
 	while(P < end){
-
 		if( (bitsieve & 1) == 0 ){
 			sieved[atomic_inc(&count)] = P;
 		}
@@ -218,33 +219,32 @@ __kernel __attribute__ ((reqd_work_group_size(256, 1, 1))) void getsegprimes(ulo
 		int inc = wheel[idx++];
 		P += inc*2;
 		bitsieve >>= inc;
-
 	}
 	barrier(CLK_LOCAL_MEM_FENCE);
 
-	int cnt = count;
+	for(int pos = lid; pos < count; pos += 256){
+		ulong p = sieved[pos];
+		ulong q = invert(p);
+		ulong one = (-p) % p;
+		ulong nmo = p - one;
+		ulong two = add(one, one, p);
+		if( strong_prp_two(p, q, one, two, nmo) ){
+			ulong r2 = add(two, two, p);
+			r2 = m_mul(r2, r2, p, q);
+			r2 = m_mul(r2, r2, p, q);
+			r2 = m_mul(r2, r2, p, q);
+			r2 = m_mul(r2, r2, p, q);
+			r2 = m_mul(r2, r2, p, q);		// 4^{2^5} = 2^64
+			ulong mSN = m_mul(startN, r2, p, q);	// montgomery form of startN
+			// .s0=p, .s1=q, .s2=r2, .s3=one, .s4=two, .s5=nmo, .s6=residue, .s7=startN in montgomery form
+			g_prime[ atomic_inc(&g_primecount[0]) ] = (ulong8)( p, q, r2, one, two, nmo, 0, mSN );
+		}
+	}
 
-	for(int z = 0; z < cnt; z += 256){
-
-		int pos = y + z;
-
-		if(pos < cnt){
-			ulong p = sieved[pos];
-			ulong q = invert(p);
-			ulong one = (-p) % p;
-			ulong nmo = p - one;
-			ulong two = add(one, one, p);
-			if( strong_prp_two(p, q, one, two, nmo) ){
-				ulong r2 = add(two, two, p);
-				r2 = m_mul(r2, r2, p, q);
-				r2 = m_mul(r2, r2, p, q);
-				r2 = m_mul(r2, r2, p, q);
-				r2 = m_mul(r2, r2, p, q);
-				r2 = m_mul(r2, r2, p, q);		// 4^{2^5} = 2^64
-				ulong mSN = m_mul(startN, r2, p, q);	// montgomery form of startN
-				// .s0=p, .s1=q, .s2=r2, .s3=one, .s4=two, .s5=nmo, .s6=residue, .s7=startN in montgomery form
-				g_prime[ atomic_inc(&g_primecount[0]) ] = (ulong8)( p, q, r2, one, two, nmo, 0, mSN );
-			}
+	if(lid == 0){
+		// set flag to notify cpu of local memory overflow
+		if(count > 1900){
+			atomic_or(&g_primecount[4], 1);
 		}
 	}
 
@@ -254,19 +254,19 @@ __kernel __attribute__ ((reqd_work_group_size(256, 1, 1))) void getsegprimes(ulo
 // same as above but with overflow checking for p near 2^64
 __kernel __attribute__ ((reqd_work_group_size(256, 1, 1))) void getsegprimesmax(ulong low, ulong high, int wheelidx, __global ulong8 *g_prime, __global uint *g_primecount, const uint startN){
 
-	const uint x = get_global_id(0);
-	const uint y = get_local_id(0);
+	const uint gid = get_global_id(0);
+	const uint lid = get_local_id(0);
 	int idx = wheelidx;
-	__local ulong sieved[3840];
+	__local ulong sieved[1900];
 	__local int count;
 
-	if(y == 0){
+	if(lid == 0){
 		count = 0;
 	}
 	barrier(CLK_LOCAL_MEM_FENCE);
 
 	// each thread is 2 turns of the mod 30 wheel
-	ulong P = low + (x * 60);
+	ulong P = low + (gid * 60);
 
 	// ck overflow
 	if(P < low){
@@ -287,7 +287,6 @@ __kernel __attribute__ ((reqd_work_group_size(256, 1, 1))) void getsegprimesmax(
 			| p103[P%103] | p107[P%107] | p109[P%109] | p113[P%113];
 
 	while(P < end){
-
 		if( (bitsieve & 1) == 0 ){
 			sieved[atomic_inc(&count)] = P;
 		}
@@ -300,45 +299,35 @@ __kernel __attribute__ ((reqd_work_group_size(256, 1, 1))) void getsegprimesmax(
 		if(P < low){
 			P = end;
 		}
-
 	}
 	barrier(CLK_LOCAL_MEM_FENCE);
 
-	int cnt = count;
+	for(int pos = lid; pos < count; pos += 256){
+		ulong p = sieved[pos];
+		ulong q = invert(p);
+		ulong one = (-p) % p;
+		ulong nmo = p - one;
+		ulong two = add(one, one, p);
+		if( strong_prp_two(p, q, one, two, nmo) ){
+			ulong r2 = add(two, two, p);
+			r2 = m_mul(r2, r2, p, q);
+			r2 = m_mul(r2, r2, p, q);
+			r2 = m_mul(r2, r2, p, q);
+			r2 = m_mul(r2, r2, p, q);
+			r2 = m_mul(r2, r2, p, q);		// 4^{2^5} = 2^64
+			ulong mSN = m_mul(startN, r2, p, q);	// montgomery form of startN
+			// .s0=p, .s1=q, .s2=r2, .s3=one, .s4=two, .s5=nmo, .s6=residue, .s7=startN in montgomery form
+			g_prime[ atomic_inc(&g_primecount[0]) ] = (ulong8)( p, q, r2, one, two, nmo, 0, mSN );
+		}
+	}
 
-	for(int z = 0; z < cnt; z += 256){
-
-		int pos = y + z;
-
-		if(pos < cnt){
-			ulong p = sieved[pos];
-			ulong q = invert(p);
-			ulong one = (-p) % p;
-			ulong nmo = p - one;
-			ulong two = add(one, one, p);
-			if( strong_prp_two(p, q, one, two, nmo) ){
-				ulong r2 = add(two, two, p);
-				r2 = m_mul(r2, r2, p, q);
-				r2 = m_mul(r2, r2, p, q);
-				r2 = m_mul(r2, r2, p, q);
-				r2 = m_mul(r2, r2, p, q);
-				r2 = m_mul(r2, r2, p, q);		// 4^{2^5} = 2^64
-				ulong mSN = m_mul(startN, r2, p, q);	// montgomery form of startN
-				// .s0=p, .s1=q, .s2=r2, .s3=one, .s4=two, .s5=nmo, .s6=residue, .s7=startN in montgomery form
-				g_prime[ atomic_inc(&g_primecount[0]) ] = (ulong8)( p, q, r2, one, two, nmo, 0, mSN );
-			}
+	if(lid == 0){
+		// set flag to notify cpu of local memory overflow
+		if(count > 1900){
+			atomic_or(&g_primecount[4], 1);
 		}
 	}
 
 }
-
-
-
-
-
-
-
-
-
 
 

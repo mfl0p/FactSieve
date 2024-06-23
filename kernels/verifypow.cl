@@ -81,7 +81,7 @@ __kernel __attribute__ ((reqd_work_group_size(256, 1, 1))) void verifypow(
 	for(uint position = gid; position < smallcount; position+=stride){
 		uint sm_prime = g_smallprimes[position];
 		uint exp = g_smallpowers[position];
-		ulong base = m_mul(sm_prime, prime.s2, prime.s0, prime.s1);
+		const ulong base = m_mul(sm_prime, prime.s2, prime.s0, prime.s1);
 		ulong primepow;
 		if(exp == 1){
 			primepow = base;

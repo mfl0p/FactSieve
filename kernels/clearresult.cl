@@ -15,6 +15,7 @@ __kernel void clearresult(__global uint *g_primecount, __global ulong *g_sum, co
 		g_primecount[1] = 0;	// keep track of largest kernel prime count
 		g_primecount[2] = 0;	// # of factors found
 		g_primecount[3] = 0;	// flag set for power table error
+		g_primecount[4] = 0;	// flag set for getsegprimes local memory overflow
 	}
 
 	if(i < numgroups){
