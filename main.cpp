@@ -1,14 +1,15 @@
 /*
 	FactSieve
-	Bryan Little, April 2024
-
-
-	With contributions by
-	Yves Gallot
+	Bryan Little, Jun 2024
+	
+	with contributions by Yves Gallot, Mark Rodenkirch, and Kim Walisch
 
 	Required minimum OpenCL version is 1.1
 	CL_TARGET_OPENCL_VERSION 110 in simpleCL.h
 
+	Search limits:  P up to 2^64 and N up to 2^31
+
+	N limit can be increased but will require overflow checking.
 */
 
 #include <unistd.h>

@@ -1,7 +1,12 @@
 /* 
-	iterate.cl
+
+	iterate.cl - Bryan Little 6/2024, montgomery arithmetic by Yves Gallot
 	
-	iterate from nmin! to nmax! mod P
+	iterate from nmin! to nmax-1! mod P
+
+	The CPU will run this kernel in many small chunks to limit kernel runtime.
+
+	Iterate and setup kernels are the main compute intensive kernels.
 	
 */
 

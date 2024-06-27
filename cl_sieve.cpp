@@ -1,6 +1,6 @@
 /*
 	FactSieve
-	Bryan Little, May 2024
+	Bryan Little, Jun 2024
 	
 	with contributions by Yves Gallot, Mark Rodenkirch, and Kim Walisch
 
@@ -9,7 +9,8 @@
 
 	Search limits:  P up to 2^64 and N up to 2^31
 
-	N limit can be increased but will require overflow checking in kernels and main loop.
+	N limit can be increased but will require overflow checking.
+
 */
 
 #include <unistd.h>
@@ -774,7 +775,6 @@ void profileGPU(progData & pd, searchData sd, sclHard hardware, int debuginfo ){
 	if(debuginfo){
 		printf("pgen %" PRIu64 " %" PRIu64 "\n",estimated,calc_range);
 	}
-//	fprintf(stderr,"pgen %" PRIu64 " %" PRIu64 "\n",estimated,calc_range);
 
 	// get a count of primes in the new gpu worksize
 	prof_stop = prof_start + calc_range;
@@ -1214,7 +1214,6 @@ void cl_sieve( sclHard hardware, searchData & sd ){
 		// checksum kernel
 		sclEnqueueKernel(hardware, pd.check);
 
-
 		uint64_t nextp = sd.p + pd.range;
 		if(nextp < sd.p){
 			// ck overflow at 2^64
@@ -1292,7 +1291,7 @@ void run_test( sclHard hardware, searchData & sd ){
 	sd.nmin = 1000000;
 	sd.nmax = 2000000;
 	cl_sieve( hardware, sd );
-	if( sd.factorcount == 87708 && sd.primecount == 316105 && sd.checksum == 0x0000046B90A5BB5B ){
+	if( sd.factorcount == 87708 && sd.primecount == 316105 && sd.checksum == 0x00000131D48B5AA8 ){
 		printf("test case 1 passed.\n\n");
 		fprintf(stderr,"test case 1 passed.\n");
 		++goodtest;
@@ -1312,7 +1311,7 @@ void run_test( sclHard hardware, searchData & sd ){
 	sd.nmin = 10000;
 	sd.nmax = 2000000;
 	cl_sieve( hardware, sd );
-	if( sd.factorcount == 3 && sd.primecount == 361727 && sd.checksum == 0x0A0A489CDBF6CD68 ){
+	if( sd.factorcount == 3 && sd.primecount == 361727 && sd.checksum == 0x02822A34AA4695C5 ){
 		printf("test case 2 passed.\n\n");
 		fprintf(stderr,"test case 2 passed.\n");
 		++goodtest;
@@ -1332,7 +1331,7 @@ void run_test( sclHard hardware, searchData & sd ){
 	sd.nmin = 127;
 	sd.nmax = 2000000;
 	cl_sieve( hardware, sd );
-	if( sd.factorcount == 352572 && sd.primecount == 78493 && sd.checksum == 0x000000297D60C602 ){
+	if( sd.factorcount == 352572 && sd.primecount == 78493 && sd.checksum == 0x0000001C622043F2 ){
 		printf("test case 3 passed.\n\n");
 		fprintf(stderr,"test case 3 passed.\n");
 		++goodtest;
@@ -1352,7 +1351,7 @@ void run_test( sclHard hardware, searchData & sd ){
 	sd.nmin = 2000000;
 	sd.nmax = 6000000;
 	cl_sieve( hardware, sd );
-	if( sd.factorcount == 3 && sd.primecount == 352866 && sd.checksum == 0x1394B9496B9E2083 ){
+	if( sd.factorcount == 3 && sd.primecount == 352866 && sd.checksum == 0x04E40517835EF4ED ){
 		printf("test case 4 passed.\n\n");
 		fprintf(stderr,"test case 4 passed.\n");
 		++goodtest;

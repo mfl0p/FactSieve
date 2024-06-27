@@ -1,7 +1,9 @@
 /* 
-	verifyreduce.cl
+
+	verifyreduce.cl - Bryan Little 6/2024, montgomery arithmetic by Yves Gallot
 
 	local memory reduction
+
 */
 
 

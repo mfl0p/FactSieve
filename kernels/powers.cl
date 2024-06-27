@@ -1,7 +1,10 @@
 /* 
-   powers.cl -- Bryan Little, April 2024
 
-   generate 32 bit prime/power table for fast calculation of nmin! mod P
+	powers.cl - Bryan Little 6/2024
+
+	generate 32 bit prime/power table for fast calculation of nmin! mod P
+
+	this kernel only runs once at program start
 
 */
 

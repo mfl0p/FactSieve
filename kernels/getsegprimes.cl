@@ -1,8 +1,31 @@
 /*
 
-	getsegprimes.cl
+	getsegprimes.cl - Bryan Little 6/2024, montgomery arithmetic by Yves Gallot
 
 	generate a segment of 2-PRPs to test
+
+	Generates a list of base 2 probable primes.  These are "industrial grade primes" requiring ~7 times
+ 	fewer calculations than testing for primality.  This way we can quickly find candidate primes to
+	use for the sieve and remove 2-PRPs later on the CPU.  This compute intensive algorithm is fast on GPU
+	when compared to a memory access intensive sieve of Eratosthenes.  Implementing a SoE can require 
+	millions of memory accesses that can cause the GPU to stall for hundreds of cycles.
+
+	The following approach is used:
+
+	1) Each thread is two turns of the mod 30 wheel.  This eliminates any numbers divisible by 2, 3, or 5.
+
+	2) Using constant bit sieve arrays the numbers divisible by the small primes from 7 to 113 are removed.
+	   A set bit in the array represents a multiple of the prime.  Each thread's mod 30 wheel starting number
+	   is modulo the small prime to obtain the correct array index that will tell which of the next 32 odd numbers
+	   are divisible by the prime. Since it's a mod 30 wheel only 30 of the positions are used.  The resulting uints
+	   are bitwise ORed.  The unset bits in the uint represent numbers that aren't divisible by any of the primes from 7 to 113.
+
+	3) Each thread iterates through it's bitsieve unit using the mod 30 wheel index increment.  If a bit is
+	   not set, the number is stored to local memory using a local memory atomic counter.
+
+	4) Packing the numbers in local memory allows all threads to stay busy in the next step, which is performing
+	   a base 2 PRP test.  If the number passes the test, it is stored in global memory with an atomic counter along
+	   with other constant data that will be used in other kernels.
 	
 */
 

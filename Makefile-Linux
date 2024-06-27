@@ -4,7 +4,7 @@ LD = $(CC)
 .SUFFIXES:
 .SUFFIXES: .o .c .h .cl .cpp
 
-VER = 24_6_23
+VER = 24_6_26
 
 APP = FactSieve-linux64-$(VER)
 

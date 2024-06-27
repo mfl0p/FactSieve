@@ -1,6 +1,6 @@
 /*
 
-	clearresult kernel
+	clearresult.cl - Bryan Little 6/2024
 	
 	clear prime counters and checksum
 

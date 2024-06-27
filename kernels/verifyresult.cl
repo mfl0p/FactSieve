@@ -1,5 +1,6 @@
 /* 
-	verifyresult.cl
+
+	verifyresult.cl - Bryan Little 6/2024, montgomery arithmetic by Yves Gallot
 	
 	verify power table final reduction and compare
 

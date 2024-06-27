@@ -1,8 +1,12 @@
 /*
 
-	setup kernel
+	setup.cl - Bryan Little 6/2024, montgomery arithmetic by Yves Gallot
 	
 	generates nmin! mod P using power table
+
+	The CPU will run this kernel in many small chunks to limit kernel runtime.
+
+	Setup and iterate kernels are the main compute intensive kernels.
 
 */
 

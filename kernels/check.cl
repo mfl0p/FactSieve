@@ -1,8 +1,11 @@
 /*
 
-	check kernel
-	
-	generate a checksum for boinc quorum
+	check.cl - Bryan Little 6/2024
+
+	Generate a checksum for boinc quorum using residue of the final factorial mod P for each P.
+
+	Using only .s6 for checksum because it depends on all other .s# values to be correct.
+	Therefore, a missed prime or any calculation error will change the final checksum value.
 
 */
 
@@ -19,10 +22,7 @@ __kernel __attribute__ ((reqd_work_group_size(256, 1, 1))) void check(	__global 
 
 	if(gid < pcnt){
 		// .s0=p, .s1=q, .s2=r2, .s3=one, .s4=two, .s5=nmo, .s6=residue of final factorial, .s7= montgomery form of last n
-		const ulong8 prime = g_prime[gid];
-
-		// add this prime, final residue, and last n to sum
-		sum[lid] = prime.s0 + prime.s6 + prime.s7;
+		sum[lid] = g_prime[gid].s6;
 	}
 	else{
 		sum[lid] = 0;

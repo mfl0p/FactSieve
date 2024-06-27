@@ -1,6 +1,6 @@
 /*
 
-	clearn kernel
+	clearn.cl - Bryan Little 6/2024
 
 	Clears prime counter.
 
