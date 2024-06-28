@@ -467,7 +467,7 @@ void getResults( progData pd, searchData & sd, sclHard hardware ){
 		sd.checksum += h_checksum[i];
 	}
 
-	uint32_t * h_primecount = (uint32_t *)malloc(5*sizeof(uint32_t));
+	uint32_t * h_primecount = (uint32_t *)malloc(6*sizeof(uint32_t));
 	if( h_primecount == NULL ){
 		fprintf(stderr,"malloc error\n");
 		exit(EXIT_FAILURE);
@@ -475,7 +475,7 @@ void getResults( progData pd, searchData & sd, sclHard hardware ){
 
 	// copy prime count to host memory
 	// blocking read
-	sclRead(hardware, 5*sizeof(uint32_t), pd.d_primecount, h_primecount);
+	sclRead(hardware, 6*sizeof(uint32_t), pd.d_primecount, h_primecount);
 
 	// largest kernel prime count.  used to check array bounds
 	if(h_primecount[1] > pd.psize){
@@ -495,6 +495,13 @@ void getResults( progData pd, searchData & sd, sclHard hardware ){
 	if(h_primecount[4] == 1){
 		fprintf(stderr,"error: getsegprimes kernel local memory overflow\n");
 		printf("error: getsegprimes kernel local memory overflow\n");
+		exit(EXIT_FAILURE);
+	}
+
+	// flag set if there is a gpu validation failure
+	if(h_primecount[5] == 1){
+		fprintf(stderr,"error: gpu validation failure\n");
+		printf("error: gpu validation failure\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -550,9 +557,8 @@ void getResults( progData pd, searchData & sd, sclHard hardware ){
 			qsort(factors, h_primecount[2], sizeof(factorData), fcomp);
 		}
 
-		// -v flag set, verify all primes on CPU using slow test
-		if(sd.verify){
-			fprintf(stderr,"Verifying all factors on CPU.\n");
+		// -v flag set or number of factors is < 100, verify all primes on CPU using slow test
+		if(sd.verify || h_primecount[2] < 100){
 			printf("Verifying all factors on CPU.  This might take a while.\n");
 			double last = 0.0;
 			for(uint32_t m=0; m<h_primecount[2]; ++m){
@@ -561,16 +567,17 @@ void getResults( progData pd, searchData & sd, sclHard hardware ){
 					printf("CPU factor verification failed.  %" PRIu64 " is not a factor of %u!%+d\n", factors[m].p, factors[m].n, factors[m].c);
 					exit(EXIT_FAILURE);
 				}
-				double done = (double)(m+1) / (double)h_primecount[2] * 100.0;
-				if(done > last+1.0){
-					last = done;
-					printf("Factor verification progress: %.1f%%\n",done);
+				if(boinc_is_standalone()){
+					double done = (double)(m+1) / (double)h_primecount[2] * 100.0;
+					if(done > last+1.0){
+						last = done;
+						printf("Factor verification progress: %.1f%%\n",done);
+					}
 				}
 			}
-			fprintf(stderr,"All factors verified on CPU.\n");
-			printf("All factors verified on CPU.\n");
+			fprintf(stderr,"Verified %u factors.\n", h_primecount[2]);
+			printf("Verified %u factors.\n", h_primecount[2]);
 		}
-
 
 		FILE * resfile = my_fopen(RESULTS_FILENAME,"a");
 
@@ -659,17 +666,10 @@ void setupSearch(searchData & sd){
 		exit(EXIT_FAILURE);
 	}
 
-	// very rough guesstimate
-	uint64_t expectedf = (uint64_t)((double)((sd.nmax-sd.nmin)*2) * (1.0 - log(sd.pmin) / log(sd.pmax)));
-
-	while(expectedf > sd.numresults && sd.numresults < 30000000){
-		sd.numresults += 1000000;
-	}
-
-	if (expectedf > (uint64_t)sd.numresults){
-		printf("error: too many estimated factors.  please decrease search range.\n");
-		fprintf(stderr, "error: too many estimated factors.  please decrease search range.\n");
-		exit(EXIT_FAILURE);
+	// increase result buffer at low P range
+	// it's still possible to overflow this with a fast GPU and large search range
+	if(sd.pmin < 0xFFFFFFFF){
+		sd.numresults = 30000000;
 	}
 
 	fprintf(stderr, "Starting sieve at p: %" PRIu64 " n: %u\nStopping sieve at P: %" PRIu64 " N: %u\n", sd.pmin, sd.nmin, sd.pmax, sd.nmax);
@@ -817,7 +817,7 @@ void cl_sieve( sclHard hardware, searchData & sd ){
 	setupSearch(sd);
 
 	// device arrays
-	pd.d_primecount = clCreateBuffer( hardware.context, CL_MEM_READ_WRITE, 5*sizeof(cl_uint), NULL, &err );
+	pd.d_primecount = clCreateBuffer( hardware.context, CL_MEM_READ_WRITE, 6*sizeof(cl_uint), NULL, &err );
         if ( err != CL_SUCCESS ) {
 		fprintf(stderr, "ERROR: clCreateBuffer failure.\n");
                 printf( "ERROR: clCreateBuffer failure.\n" );
@@ -965,7 +965,6 @@ void cl_sieve( sclHard hardware, searchData & sd ){
 
 	free(smlist);
 
-
 	uint32_t stride = 2560000;
 
 	sclSetGlobalSize( pd.powers, stride );
@@ -1032,6 +1031,7 @@ void cl_sieve( sclHard hardware, searchData & sd ){
 	sclSetKernelArg(pd.check, 1, sizeof(cl_mem), &pd.d_primecount);
 	sclSetKernelArg(pd.check, 2, sizeof(cl_mem), &pd.d_sum);
 	sclSetKernelArg(pd.check, 3, sizeof(uint32_t), &pd.numgroups);
+	sclSetKernelArg(pd.check, 4, sizeof(uint32_t), &sd.nmax);
 
 	sclSetKernelArg(pd.verifyslow, 0, sizeof(cl_mem), &pd.d_primes);
 	sclSetKernelArg(pd.verifyslow, 1, sizeof(cl_mem), &d_verify);
@@ -1285,13 +1285,12 @@ void run_test( sclHard hardware, searchData & sd ){
 	printf("Beginning self test of 4 ranges.\n");
 
 //	-p 5e6 -P 10e6 -n 1e6 -N 2e6
-	sd.verify = false;
 	sd.pmin = 5000000;
 	sd.pmax = 10000000;
 	sd.nmin = 1000000;
 	sd.nmax = 2000000;
 	cl_sieve( hardware, sd );
-	if( sd.factorcount == 87708 && sd.primecount == 316105 && sd.checksum == 0x00000131D48B5AA8 ){
+	if( sd.factorcount == 87708 && sd.primecount == 316105 && sd.checksum == 0x00000244EAC6468A ){
 		printf("test case 1 passed.\n\n");
 		fprintf(stderr,"test case 1 passed.\n");
 		++goodtest;
@@ -1305,13 +1304,12 @@ void run_test( sclHard hardware, searchData & sd ){
 	sd.factorcount = 0;
 
 //	-p 1e12 -P 100001e7 -n 10000 -N 2e6
-	sd.verify = true;
 	sd.pmin = 1000000000000;
 	sd.pmax = 1000010000000;
 	sd.nmin = 10000;
 	sd.nmax = 2000000;
 	cl_sieve( hardware, sd );
-	if( sd.factorcount == 3 && sd.primecount == 361727 && sd.checksum == 0x02822A34AA4695C5 ){
+	if( sd.factorcount == 3 && sd.primecount == 361727 && sd.checksum == 0x05052A2D65F3D735 ){
 		printf("test case 2 passed.\n\n");
 		fprintf(stderr,"test case 2 passed.\n");
 		++goodtest;
@@ -1324,14 +1322,13 @@ void run_test( sclHard hardware, searchData & sd ){
 	sd.primecount = 0;
 	sd.factorcount = 0;
 
-//	-p 127 -P 1000000 -n 127 -N 2e6
-	sd.verify = false;
+//	-p 127 -P 1e6 -n 127 -N 2e6
 	sd.pmin = 127;
 	sd.pmax = 1000000;
 	sd.nmin = 127;
 	sd.nmax = 2000000;
 	cl_sieve( hardware, sd );
-	if( sd.factorcount == 352572 && sd.primecount == 78493 && sd.checksum == 0x0000001C622043F2 ){
+	if( sd.factorcount == 352572 && sd.primecount == 78493 && sd.checksum == 0x00000020BE8771CF ){
 		printf("test case 3 passed.\n\n");
 		fprintf(stderr,"test case 3 passed.\n");
 		++goodtest;
@@ -1344,14 +1341,13 @@ void run_test( sclHard hardware, searchData & sd ){
 	sd.primecount = 0;
 	sd.factorcount = 0;
 
-//	-p 2e12 -P 200001e7 -n 2e6 -N 6e6 -v
-	sd.verify = true;
+//	-p 2e12 -P 200001e7 -n 2e6 -N 6e6
 	sd.pmin = 2000000000000;
 	sd.pmax = 2000010000000;
 	sd.nmin = 2000000;
 	sd.nmax = 6000000;
 	cl_sieve( hardware, sd );
-	if( sd.factorcount == 3 && sd.primecount == 352866 && sd.checksum == 0x04E40517835EF4ED ){
+	if( sd.factorcount == 3 && sd.primecount == 352866 && sd.checksum == 0x09C9742A908451EB ){
 		printf("test case 4 passed.\n\n");
 		fprintf(stderr,"test case 4 passed.\n");
 		++goodtest;

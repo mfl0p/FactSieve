@@ -14,12 +14,9 @@ typedef struct {
 	uint64_t factorcount = 0;
 	uint32_t nstep;
 	uint32_t sstep;
-	const uint32_t minresults = 1000000;
-	uint32_t numresults = minresults;	// start with 16 megabytes, automatically increases in steps to ~500 megabytes if needed
-
-
+	uint32_t numresults = 1000000;
 	uint64_t workunit;
-	uint64_t p;	// current p
+	uint64_t p;
 	bool write_state_a_next = true;
 	uint64_t last_trickle;
 

@@ -130,19 +130,18 @@ bool isPrime(uint64_t p)
 // verifies the factor on CPU using slow algorithm
 bool verify(uint64_t p, uint32_t n, int32_t c)
 {
-	uint64_t q = invert(p);
-	uint64_t one = (-p) % p;
-	uint64_t two = add(one, one, p);
+	uint64_t result = 2;
 
-	uint64_t residue = two;
-	uint64_t current = add(two, one, p);
-
-	for(uint32_t i=3; i<=n; ++i){
-		residue = m_mul(residue, current, p, q);
-		current = add(current, one, p);
+	if(p < 0xFFFFFFFF){
+		for(uint32_t i=3; i<=n; ++i){
+			result = (result * i) % p;
+		}
 	}
-
-	uint64_t result = m_mul(residue, 1, p, q);	// convert out of montgomery form
+	else{
+		for(uint32_t i=3; i<=n; ++i){
+			result = ((unsigned __int128)result * i) % p;
+		}
+	}
 
 	if(result == 1 && c == -1){
 		return true;
