@@ -3,8 +3,7 @@
 	check.cl - Bryan Little 6/2024, montgomery arithmetic by Yves Gallot
 
 	Generate a checksum for boinc quorum using the residue of the final factorial mod P (.s6) added to the
-	last N in montgomery form (.s7) for each P.  In the unlikely event that the final residue mod P is zero,
-	adding .s7 will result in a non-zero sum for each P.
+	last N in montgomery form (.s7) for each P.
 	
 	A validation test is performed by converting the final N value out of montgomery form and comparing
 	it to nmax.  Result should be equal after iterating from nmin to nmax in montgomery form.  If the
