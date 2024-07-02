@@ -24,8 +24,8 @@
 
 void help()
 {
-	printf("Welcome to FactSieve, an OpenCL program to find factors of factorial primes n!+-1\n");
-	printf("Note that there are no factors for factorial primes n!+-1 when p <= n because all primes <= n are factors of n!\n");
+	printf("Welcome to FactSieve, an OpenCL program to find factors of factorial prime candidates of the form n!+-1\n");
+	printf("Note that there are no factors for numbers of the form n!+-1 when p <= n because all primes <= n are factors of n!\n");
 	printf("When there are less than 100 factors at checkpoint they will be verified on the CPU\n");
 	printf("Program usage:\n");  
 	printf("-n #			Start factorial n!+-1\n");

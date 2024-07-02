@@ -505,26 +505,28 @@ void getResults( progData pd, searchData & sd, sclHard hardware ){
 		exit(EXIT_FAILURE);
 	}
 
-	if(h_primecount[2] > 0){
+	uint32_t numfactors = h_primecount[2];
 
-		if(h_primecount[2] > sd.numresults){
-			fprintf(stderr,"Error: number of results (%u) overflowed array.\n", h_primecount[2]);
+	if(numfactors > 0){
+
+		if(numfactors > sd.numresults){
+			fprintf(stderr,"Error: number of results (%u) overflowed array.\n", numfactors);
 			exit(EXIT_FAILURE);
 		}
 
-		printf("processing %u factors on CPU\n", h_primecount[2]);
+		printf("processing %u factors on CPU\n", numfactors);
 
-		uint64_t * h_factorP = (uint64_t *)malloc(h_primecount[2] * sizeof(uint64_t));
+		uint64_t * h_factorP = (uint64_t *)malloc(numfactors * sizeof(uint64_t));
 		if( h_factorP == NULL ){
 			fprintf(stderr,"malloc error\n");
 			exit(EXIT_FAILURE);
 		}
-		uint32_t * h_factorN = (uint32_t *)malloc(h_primecount[2] * sizeof(uint32_t));
+		uint32_t * h_factorN = (uint32_t *)malloc(numfactors * sizeof(uint32_t));
 		if( h_factorN == NULL ){
 			fprintf(stderr,"malloc error\n");
 			exit(EXIT_FAILURE);
 		}
-		int32_t * h_factorVal = (int32_t *)malloc(h_primecount[2] * sizeof(int32_t));
+		int32_t * h_factorVal = (int32_t *)malloc(numfactors * sizeof(int32_t));
 		if( h_factorVal == NULL ){
 			fprintf(stderr,"malloc error\n");
 			exit(EXIT_FAILURE);
@@ -532,16 +534,17 @@ void getResults( progData pd, searchData & sd, sclHard hardware ){
 
 		// copy factors to host memory
 		// blocking read
-		sclRead(hardware, h_primecount[2] * sizeof(uint64_t), pd.d_factorP, h_factorP);
-		sclRead(hardware, h_primecount[2] * sizeof(uint32_t), pd.d_factorN, h_factorN);
-		sclRead(hardware, h_primecount[2] * sizeof(int32_t), pd.d_factorVal, h_factorVal);
+		sclRead(hardware, numfactors * sizeof(uint64_t), pd.d_factorP, h_factorP);
+		sclRead(hardware, numfactors * sizeof(uint32_t), pd.d_factorN, h_factorN);
+		sclRead(hardware, numfactors * sizeof(int32_t), pd.d_factorVal, h_factorVal);
 
-		factorData * factors = (factorData *)malloc(h_primecount[2] * sizeof(factorData));
+		// move factors into struct so we can sort
+		factorData * factors = (factorData *)malloc(numfactors * sizeof(factorData));
 		if( factors == NULL ){
 			fprintf(stderr,"malloc error\n");
 			exit(EXIT_FAILURE);
 		}
-		for(uint32_t i = 0; i < h_primecount[2]; ++i){
+		for(uint32_t i = 0; i < numfactors; ++i){
 			factors[i].p = h_factorP[i];
 			factors[i].n = h_factorN[i];
 			factors[i].c = h_factorVal[i];
@@ -552,31 +555,34 @@ void getResults( progData pd, searchData & sd, sclHard hardware ){
 		free(h_factorVal);
 
 		// sort results by prime size if needed
-		if(h_primecount[2] > 1){
+		if(numfactors > 1){
 			printf("sorting factors\n");
-			qsort(factors, h_primecount[2], sizeof(factorData), fcomp);
+			qsort(factors, numfactors, sizeof(factorData), fcomp);
 		}
 
 		// -v flag set or number of factors is < 100, verify all primes on CPU using slow test
-		if(sd.verify || h_primecount[2] < 100){
+		if(sd.verify || numfactors < 100){
 			printf("Verifying all factors on CPU.  This might take a while.\n");
 			double last = 0.0;
-			for(uint32_t m=0; m<h_primecount[2]; ++m){
+			for(uint32_t m=0; m<numfactors; ++m){
 				if( verify( factors[m].p, factors[m].n, factors[m].c ) == false ){
 					fprintf(stderr,"CPU factor verification failed.  %" PRIu64 " is not a factor of %u!%+d\n", factors[m].p, factors[m].n, factors[m].c);
 					printf("CPU factor verification failed.  %" PRIu64 " is not a factor of %u!%+d\n", factors[m].p, factors[m].n, factors[m].c);
 					exit(EXIT_FAILURE);
 				}
 				if(boinc_is_standalone()){
-					double done = (double)(m+1) / (double)h_primecount[2] * 100.0;
-					if(done > last+1.0){
+					double done = (double)(m+1) / (double)numfactors * 100.0;
+					if(done > last+0.1){
 						last = done;
-						printf("Factor verification progress: %.1f%%\n",done);
+						printf("\rFactor verification progress: %.1f%%     ",done);
+						fflush(stdout);
 					}
 				}
 			}
-			fprintf(stderr,"Verified %u factors.\n", h_primecount[2]);
-			printf("Verified %u factors.\n", h_primecount[2]);
+			fprintf(stderr,"Verified %u factors.\n", numfactors);
+			if(boinc_is_standalone()){
+				printf("\rVerified %u factors.                              \n", numfactors);
+			}
 		}
 
 		FILE * resfile = my_fopen(RESULTS_FILENAME,"a");
@@ -590,7 +596,7 @@ void getResults( progData pd, searchData & sd, sclHard hardware ){
 
 		printf("writing factors to %s\n", RESULTS_FILENAME);
 
-		for(uint32_t m=0; m<h_primecount[2]; ++m){
+		for(uint32_t m=0; m<numfactors; ++m){
 
 			uint64_t p = factors[m].p;
 			uint32_t n = factors[m].n;
@@ -825,19 +831,19 @@ void cl_sieve( sclHard hardware, searchData & sd ){
 	}
         pd.d_factorP = clCreateBuffer( hardware.context, CL_MEM_READ_WRITE, sd.numresults*sizeof(cl_ulong), NULL, &err );
         if ( err != CL_SUCCESS ) {
-		fprintf(stderr, "ERROR: clCreateBuffer failure.\n");
+		fprintf(stderr, "ERROR: clCreateBuffer failure: factorP array.\n");
                 printf( "ERROR: clCreateBuffer failure.\n" );
 		exit(EXIT_FAILURE);
 	}
         pd.d_factorN = clCreateBuffer( hardware.context, CL_MEM_READ_WRITE, sd.numresults*sizeof(cl_uint), NULL, &err );
         if ( err != CL_SUCCESS ) {
-		fprintf(stderr, "ERROR: clCreateBuffer failure.\n");
+		fprintf(stderr, "ERROR: clCreateBuffer failure: factorN array.\n");
                 printf( "ERROR: clCreateBuffer failure.\n" );
 		exit(EXIT_FAILURE);
 	}
         pd.d_factorVal = clCreateBuffer( hardware.context, CL_MEM_READ_WRITE, sd.numresults*sizeof(cl_int), NULL, &err );
         if ( err != CL_SUCCESS ) {
-		fprintf(stderr, "ERROR: clCreateBuffer failure.\n");
+		fprintf(stderr, "ERROR: clCreateBuffer failure: factorVal array.\n");
                 printf( "ERROR: clCreateBuffer failure.\n" );
 		exit(EXIT_FAILURE);
 	}
@@ -1086,7 +1092,7 @@ void cl_sieve( sclHard hardware, searchData & sd ){
 		if( ((int)boinc_curr - (int)boinc_last) > 1 ){
     			double fd = (double)(sd.p-sd.pmin)*irsize;
 			boinc_fraction_done(fd);
-			if(boinc_is_standalone()) printf("Tests done: %.1f%%\n",fd*100.0);
+			if(boinc_is_standalone()) printf("Sieve Progress: %.1f%%\n",fd*100.0);
 			boinc_last = boinc_curr;
 		}
 
@@ -1149,8 +1155,6 @@ void cl_sieve( sclHard hardware, searchData & sd ){
 			double multi = (sd.compute)?(50.0 / kernel_ms):(10.0 / kernel_ms);	// target kernel time 50ms or 10ms
 			uint32_t new_sstep = (uint32_t)( ((double)sd.sstep) * multi);
 			if(new_sstep == 0) new_sstep=1;
-			if(debuginfo) printf("sstep %u %u\n",sd.sstep,new_sstep);
-//			fprintf(stderr,"sstep %u %u\n",sd.sstep,new_sstep);
 			sd.sstep = new_sstep;
 		}
 
@@ -1185,9 +1189,8 @@ void cl_sieve( sclHard hardware, searchData & sd ){
 			double multi = (sd.compute)?(50.0 / kernel_ms):(10.0 / kernel_ms);	// target kernel time 50ms or 10ms
 			uint32_t new_nstep = (uint32_t)( ((double)sd.nstep) * multi);
 			if(new_nstep == 0) new_nstep=1;
-			if(debuginfo) printf("nstep %u %u\n",sd.nstep,new_nstep);
-//			fprintf(stderr,"nstep %u %u\n",sd.nstep,new_nstep);
 			sd.nstep = new_nstep;
+			fprintf(stderr,"p: %u s: %u n: %u\n", pd.range, sd.sstep, sd.nstep);
 		}
 
 		// iterate from nmin! to nmax-1! mod P
@@ -1234,7 +1237,7 @@ void cl_sieve( sclHard hardware, searchData & sd ){
 	boinc_begin_critical_section();
 	sd.p = sd.pmax;
 	boinc_fraction_done(1.0);
-	if(boinc_is_standalone()) printf("Tests done: %.1f%%\n",100.0);
+	if(boinc_is_standalone()) printf("Sieve Progress: %.1f%%\n",100.0);
 	getResults(pd, sd, hardware);
 	checkpoint(sd);
 

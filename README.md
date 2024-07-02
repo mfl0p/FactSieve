@@ -2,7 +2,7 @@
 
 FactSieve by Bryan Little
 
-A BOINC enabled OpenCL standalone sieve for factorial prime factors n!+-1
+A BOINC enabled OpenCL standalone sieve for factors of factorial prime candidates of the form n!+-1
 
 With contributions by
 * Yves Gallot
@@ -25,7 +25,7 @@ With contributions by
 
 ## Running the program
 ```
-Note that when p <= n there are no factors for factorial primes n!+-1
+Note that when p <= n there are no factors for numbers of the form n!+-1
 All p <= n are factors of n!
 When there are less than 100 factors at checkpoint they will be verified on the CPU.
 
@@ -55,5 +55,6 @@ or
 ```
 
 ## Related Links
-
-* [primesieve](https://github.com/kimwalisch/primesieve)
+* [Yves Gallot on GitHub](https://github.com/galloty)
+* [primesieve by Kim Walisch](https://github.com/kimwalisch/primesieve)
+* [Mark Rodenkirch on SourceForge](https://sourceforge.net/projects/mtsieve/)
