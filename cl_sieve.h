@@ -19,6 +19,7 @@ typedef struct {
 	uint64_t p;
 	bool write_state_a_next = true;
 	uint64_t last_trickle;
+	uint32_t threadcount = 1;
 
 }searchData;
 

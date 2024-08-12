@@ -9,13 +9,14 @@
 
 	Search limits:  P up to 2^64 and N up to 2^31
 
-	N limit can be increased but will require overflow checking.
+	Using OpenMP for multithreaded factor verification.
 
 */
 
 #include <unistd.h>
 #include <cinttypes>
 #include <math.h>
+#include <omp.h>
 
 #include "boinc_api.h"
 #include "boinc_opencl.h"
@@ -562,26 +563,36 @@ void getResults( progData pd, searchData & sd, sclHard hardware ){
 
 		// -v flag set or number of factors is < 100, verify all primes on CPU using slow test
 		if(sd.verify || numfactors < 100){
-			printf("Verifying all factors on CPU.  This might take a while.\n");
+			if(boinc_is_standalone()){
+				printf("Verifying all factors on CPU using %u threads.  This might take a while.\nFactor verification progress:\n", sd.threadcount);
+			}
 			double last = 0.0;
+			uint32_t tested = 0;
+
+			#pragma omp parallel for
 			for(uint32_t m=0; m<numfactors; ++m){
 				if( verify( factors[m].p, factors[m].n, factors[m].c ) == false ){
-					fprintf(stderr,"CPU factor verification failed.  %" PRIu64 " is not a factor of %u!%+d\n", factors[m].p, factors[m].n, factors[m].c);
-					printf("CPU factor verification failed.  %" PRIu64 " is not a factor of %u!%+d\n", factors[m].p, factors[m].n, factors[m].c);
+					fprintf(stderr,"CPU factor verification failed!  %" PRIu64 " is not a factor of %u!%+d\n", factors[m].p, factors[m].n, factors[m].c);
+					printf("\nCPU factor verification failed!  %" PRIu64 " is not a factor of %u!%+d\n", factors[m].p, factors[m].n, factors[m].c);
 					exit(EXIT_FAILURE);
 				}
+
 				if(boinc_is_standalone()){
-					double done = (double)(m+1) / (double)numfactors * 100.0;
+					#pragma omp atomic
+					++tested;
+
+					double done = (double)(tested+1) / (double)numfactors * 100.0;
 					if(done > last+0.1){
 						last = done;
-						printf("\rFactor verification progress: %.1f%%     ",done);
+						printf("\r%.1f%%     ",done);
 						fflush(stdout);
 					}
 				}
+
 			}
 			fprintf(stderr,"Verified %u factors.\n", numfactors);
 			if(boinc_is_standalone()){
-				printf("\rVerified %u factors.                              \n", numfactors);
+				printf("\rVerified %u factors.\n", numfactors);
 			}
 		}
 

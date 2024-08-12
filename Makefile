@@ -4,7 +4,7 @@ LD = $(CC)
 .SUFFIXES:
 .SUFFIXES: .o .c .h .cl .cpp
 
-VER = 24_7_2
+VER = 24_8_12
 
 APP = FactSieve-win64-$(VER)
 
@@ -19,7 +19,7 @@ BOINC_INC = -I$(BOINC_DIR)/lib -I$(BOINC_DIR)/api -I$(BOINC_DIR) -I$(BOINC_DIR)/
 BOINC_LIB = -L$(BOINC_DIR)/lib -L$(BOINC_DIR)/api -L$(BOINC_DIR) -lboinc_opencl -lboinc_api -lboinc
 
 CFLAGS  = -I . -I kernels -O3 -m64 -Wall -DVERS=\"$(VER)\"
-LDFLAGS = $(CFLAGS) -lstdc++ -static
+LDFLAGS = $(CFLAGS) -lstdc++ -static -fopenmp
 
 all : clean $(APP)
 
@@ -27,10 +27,10 @@ $(APP) : $(OBJ)
 	$(LD) $(LDFLAGS) $^ $(LIBS) $(BOINC_LIB) -o $@
 
 main.o : $(SRC)
-	$(CC) $(CFLAGS) $(OCL_INC) $(BOINC_INC) -c -o $@ main.cpp
+	$(CC) $(CFLAGS) $(OCL_INC) $(BOINC_INC) -fopenmp -c -o $@ main.cpp
 
 cl_sieve.o : $(SRC) $(KERNEL_HEADERS)
-	$(CC) $(CFLAGS) $(OCL_INC) $(BOINC_INC) -c -o $@ cl_sieve.cpp
+	$(CC) $(CFLAGS) $(OCL_INC) $(BOINC_INC) -fopenmp -c -o $@ cl_sieve.cpp
 
 simpleCL.o : $(SRC)
 	$(CC) $(CFLAGS) $(OCL_INC) $(BOINC_INC) -c -o $@ simpleCL.c

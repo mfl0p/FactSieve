@@ -9,11 +9,13 @@
 
 	Search limits:  P up to 2^64 and N up to 2^31
 
-	N limit can be increased but will require overflow checking.
+	Using OpenMP for multithreaded factor verification.
+
 */
 
 #include <unistd.h>
 #include <getopt.h>
+#include <omp.h>
 
 #include "boinc_api.h"
 #include "boinc_opencl.h"
@@ -33,13 +35,13 @@ void help()
 	printf("-p #			Starting prime factor p\n");
 	printf("-P #			End prime factor P, range [-p, -P) exclusive, 127 <= -n <= -p <= p < -P < 2^64\n");
 	printf("-s or --test		Perform self test to verify proper operation of the program.\n");
-	printf("-v			Verify all factors on CPU.  This can be slow with a large number of factors.\n");
+	printf("-v #			Verify all factors on CPU using # threads.  This can be slow with a large number of factors.\n");
 	printf("-h			Print this help\n");
         boinc_finish(EXIT_FAILURE);
 }
 
 
-static const char *short_opts = "p:P:n:N:svd:h";
+static const char *short_opts = "p:P:n:N:v:sd:h";
 
 static int parse_option(int opt, char *arg, const char *source, searchData & sd)
 {
@@ -63,16 +65,17 @@ static int parse_option(int opt, char *arg, const char *source, searchData & sd)
       status = parse_uint(&sd.nmax,arg,128,0x7FFFFFFF);
       break;
 
+    case 'v':
+      sd.verify = true;
+      status = parse_uint(&sd.threadcount,arg,1,64);
+      fprintf(stderr,"-v argument specified.  Verifying all factors on CPU using %u threads.\n", sd.threadcount);
+      printf("-v argument specified.  Verifying all factors on CPU using %u threads.\n", sd.threadcount);
+      break;
+
     case 's':
       sd.test = true;
       fprintf(stderr,"Performing self test.\n");
       printf("Performing self test.\n");
-      break;
-
-    case 'v':
-      sd.verify = true;
-      fprintf(stderr,"Verifying all factors on CPU.\n");
-      printf("Verifying all factors on CPU.\n");
       break;
 
     case 'd':
@@ -207,7 +210,6 @@ int main(int argc, char *argv[])
 	if(boinc_is_standalone()){
 		printf("\nFactSieve version %s by Bryan Little\nwith contributions by Yves Gallot, Mark Rodenkirch, and Kim Walisch\n",VERS);
 		printf("Compiled " __DATE__ " with GCC " __VERSION__ "\n");
-
 	}
 
         // Print out cmd line for diagnostics
@@ -219,6 +221,7 @@ int main(int argc, char *argv[])
 
 	process_args(argc,argv,sd);
 
+	omp_set_num_threads(sd.threadcount);
 
 	cl_platform_id platform = 0;
 	cl_device_id device = 0;

@@ -4,6 +4,8 @@ FactSieve by Bryan Little
 
 A BOINC enabled OpenCL standalone sieve for factors of factorial prime candidates of the form n!+-1
 
+Using OpenMP for multithreaded factor verification on CPU.
+
 With contributions by
 * Yves Gallot
 * Mark Rodenkirch
@@ -28,6 +30,7 @@ With contributions by
 Note that when p <= n there are no factors for numbers of the form n!+-1
 All p <= n are factors of n!
 When there are less than 100 factors at checkpoint they will be verified on the CPU.
+An optional argument -v # can be used to verify all factors on CPU using the specified number of threads #.
 
 command line options
 * -n #		Start factorial n!+-1
@@ -35,7 +38,7 @@ command line options
 * -p #		Starting prime factor p
 * -P #		End prime factor P, range [-p, -P) exclusive, 127 <= -n <= -p <= p < -P < 2^64
 * -s		Perform self test to verify proper operation of the program
-* -v		Verify all factors on CPU.  This can be slow with a large number of factors.
+* -v #		Verify all factors on CPU using # threads.  This can be slow with a large number of factors.
 * -h		Print help
 
 Program gets the OpenCL GPU device index from BOINC.  To run stand-alone, the program will
