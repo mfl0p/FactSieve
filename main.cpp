@@ -28,14 +28,13 @@ void help()
 {
 	printf("Welcome to FactSieve, an OpenCL program to find factors of factorial prime candidates of the form n!+-1\n");
 	printf("Note that there are no factors for numbers of the form n!+-1 when p <= n because all primes <= n are factors of n!\n");
-	printf("When there are less than 100 factors at checkpoint they will be verified on the CPU\n");
 	printf("Program usage:\n");  
 	printf("-n #			Start factorial n!+-1\n");
 	printf("-N #			End factorial N!+-1, range [-n, -N) exclusive, 127 <= -n <= n < -N < 2^31\n");
 	printf("-p #			Starting prime factor p\n");
 	printf("-P #			End prime factor P, range [-p, -P) exclusive, 127 <= -n <= -p <= p < -P < 2^64\n");
-	printf("-s or --test		Perform self test to verify proper operation of the program.\n");
-	printf("-v #			Verify all factors on CPU using # threads.  This can be slow with a large number of factors.\n");
+	printf("-v #			Optional, specify the number of CPU threads used to verify factors.  Default is 2.\n");
+	printf("-s 			Perform self test to verify proper operation of the program with the current GPU.\n");
 	printf("-h			Print this help\n");
         boinc_finish(EXIT_FAILURE);
 }
@@ -66,10 +65,7 @@ static int parse_option(int opt, char *arg, const char *source, searchData & sd)
       break;
 
     case 'v':
-      sd.verify = true;
       status = parse_uint(&sd.threadcount,arg,1,64);
-      fprintf(stderr,"-v argument specified.  Verifying all factors on CPU using %u threads.\n", sd.threadcount);
-      printf("-v argument specified.  Verifying all factors on CPU using %u threads.\n", sd.threadcount);
       break;
 
     case 's':
@@ -195,10 +191,6 @@ int main(int argc, char *argv[])
 	sclHard hardware;
 	searchData sd;
 
-	primesieve_set_num_threads(1);
-
-//	_putenv_s("CUDA_CACHE_DISABLE", "1");
-
         // Initialize BOINC
         BOINC_OPTIONS options;
         boinc_options_defaults(options);
@@ -218,10 +210,11 @@ int main(int argc, char *argv[])
         	fprintf(stderr, "%s ", argv[i]);
         fprintf(stderr, "\n");
 
-
 	process_args(argc,argv,sd);
 
 	omp_set_num_threads(sd.threadcount);
+
+	primesieve_set_num_threads(1);
 
 	cl_platform_id platform = 0;
 	cl_device_id device = 0;

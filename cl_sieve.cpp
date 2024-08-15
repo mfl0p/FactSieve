@@ -561,41 +561,41 @@ void getResults( progData pd, searchData & sd, sclHard hardware ){
 			qsort(factors, numfactors, sizeof(factorData), fcomp);
 		}
 
-		// -v flag set or number of factors is < 100, verify all primes on CPU using slow test
-		if(sd.verify || numfactors < 100){
+		// verify all factors on CPU using slow test
+		if(boinc_is_standalone()){
+			printf("Verifying factors on CPU...\n");
+		}
+		double last = 0.0;
+		uint32_t tested = 0;
+
+		#pragma omp parallel for
+		for(uint32_t m=0; m<numfactors; ++m){
+			if( verify( factors[m].p, factors[m].n, factors[m].c ) == false ){
+				fprintf(stderr,"CPU factor verification failed!  %" PRIu64 " is not a factor of %u!%+d\n", factors[m].p, factors[m].n, factors[m].c);
+				printf("\nCPU factor verification failed!  %" PRIu64 " is not a factor of %u!%+d\n", factors[m].p, factors[m].n, factors[m].c);
+				exit(EXIT_FAILURE);
+			}
+
 			if(boinc_is_standalone()){
-				printf("Verifying all factors on CPU using %u threads.  This might take a while.\nFactor verification progress:\n", sd.threadcount);
-			}
-			double last = 0.0;
-			uint32_t tested = 0;
+				#pragma omp atomic
+				++tested;
 
-			#pragma omp parallel for
-			for(uint32_t m=0; m<numfactors; ++m){
-				if( verify( factors[m].p, factors[m].n, factors[m].c ) == false ){
-					fprintf(stderr,"CPU factor verification failed!  %" PRIu64 " is not a factor of %u!%+d\n", factors[m].p, factors[m].n, factors[m].c);
-					printf("\nCPU factor verification failed!  %" PRIu64 " is not a factor of %u!%+d\n", factors[m].p, factors[m].n, factors[m].c);
-					exit(EXIT_FAILURE);
+				double done = (double)(tested+1) / (double)numfactors * 100.0;
+				if(done > last+0.1){
+					last = done;
+					printf("\r%.1f%%     ",done);
+					fflush(stdout);
 				}
-
-				if(boinc_is_standalone()){
-					#pragma omp atomic
-					++tested;
-
-					double done = (double)(tested+1) / (double)numfactors * 100.0;
-					if(done > last+0.1){
-						last = done;
-						printf("\r%.1f%%     ",done);
-						fflush(stdout);
-					}
-				}
-
 			}
-			fprintf(stderr,"Verified %u factors.\n", numfactors);
-			if(boinc_is_standalone()){
-				printf("\rVerified %u factors.\n", numfactors);
-			}
+
 		}
 
+		fprintf(stderr,"Verified %u factors.\n", numfactors);
+		if(boinc_is_standalone()){
+			printf("\rVerified %u factors.\n", numfactors);
+		}
+
+		// write factors to file
 		FILE * resfile = my_fopen(RESULTS_FILENAME,"a");
 
 		if( resfile == NULL ){
@@ -1201,7 +1201,7 @@ void cl_sieve( sclHard hardware, searchData & sd ){
 			uint32_t new_nstep = (uint32_t)( ((double)sd.nstep) * multi);
 			if(new_nstep == 0) new_nstep=1;
 			sd.nstep = new_nstep;
-			fprintf(stderr,"p: %u s: %u n: %u\n", pd.range, sd.sstep, sd.nstep);
+			fprintf(stderr,"c: %u p: %u s: %u n: %u\n", sd.threadcount, pd.range, sd.sstep, sd.nstep);
 		}
 
 		// iterate from nmin! to nmax-1! mod P
@@ -1298,13 +1298,13 @@ void run_test( sclHard hardware, searchData & sd ){
 
 	printf("Beginning self test of 4 ranges.\n");
 
-//	-p 5e6 -P 10e6 -n 1e6 -N 2e6
-	sd.pmin = 5000000;
-	sd.pmax = 10000000;
+//	-p 100e6 -P 101e6 -n 1e6 -N 2e6
+	sd.pmin = 100000000;
+	sd.pmax = 101000000;
 	sd.nmin = 1000000;
 	sd.nmax = 2000000;
 	cl_sieve( hardware, sd );
-	if( sd.factorcount == 87708 && sd.primecount == 316105 && sd.checksum == 0x00000244EAC6468A ){
+	if( sd.factorcount == 1071 && sd.primecount == 54211 && sd.checksum == 0x000004F4F744CA97 ){
 		printf("test case 1 passed.\n\n");
 		fprintf(stderr,"test case 1 passed.\n");
 		++goodtest;
@@ -1336,13 +1336,13 @@ void run_test( sclHard hardware, searchData & sd ){
 	sd.primecount = 0;
 	sd.factorcount = 0;
 
-//	-p 127 -P 1e6 -n 127 -N 2e6
+//	-p 127 -P 100000 -n 127 -N 1e6
 	sd.pmin = 127;
-	sd.pmax = 1000000;
+	sd.pmax = 100000;
 	sd.nmin = 127;
-	sd.nmax = 2000000;
+	sd.nmax = 1000000;
 	cl_sieve( hardware, sd );
-	if( sd.factorcount == 352572 && sd.primecount == 78493 && sd.checksum == 0x00000020BE8771CF ){
+	if( sd.factorcount == 42770 && sd.primecount == 9566 && sd.checksum == 0x0000000065C074F0 ){
 		printf("test case 3 passed.\n\n");
 		fprintf(stderr,"test case 3 passed.\n");
 		++goodtest;

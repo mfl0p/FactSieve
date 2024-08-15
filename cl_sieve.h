@@ -6,7 +6,6 @@ typedef struct {
 	uint64_t pmin = 0, pmax = 0;
 	uint32_t nmin = 0, nmax = 0;
 	bool test = false;
-	bool verify = false;
 	uint64_t checksum = 0;
 	bool compute = false;
 	int computeunits;
@@ -19,7 +18,7 @@ typedef struct {
 	uint64_t p;
 	bool write_state_a_next = true;
 	uint64_t last_trickle;
-	uint32_t threadcount = 1;
+	uint32_t threadcount = 2;
 
 }searchData;
 
