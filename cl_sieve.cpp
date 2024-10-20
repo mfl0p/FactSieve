@@ -515,7 +515,9 @@ void getResults( progData pd, searchData & sd, sclHard hardware ){
 			exit(EXIT_FAILURE);
 		}
 
-		printf("processing %u factors on CPU\n", numfactors);
+		if(boinc_is_standalone()){
+			printf("processing %u factors on CPU\n", numfactors);
+		}
 
 		uint64_t * h_factorP = (uint64_t *)malloc(numfactors * sizeof(uint64_t));
 		if( h_factorP == NULL ){
@@ -557,7 +559,9 @@ void getResults( progData pd, searchData & sd, sclHard hardware ){
 
 		// sort results by prime size if needed
 		if(numfactors > 1){
-			printf("sorting factors\n");
+			if(boinc_is_standalone()){
+				printf("sorting factors\n");
+			}
 			qsort(factors, numfactors, sizeof(factorData), fcomp);
 		}
 
@@ -605,7 +609,9 @@ void getResults( progData pd, searchData & sd, sclHard hardware ){
 
 		uint64_t lastgoodp = 0;
 
-		printf("writing factors to %s\n", RESULTS_FILENAME);
+		if(boinc_is_standalone()){
+			printf("writing factors to %s\n", RESULTS_FILENAME);
+		}
 
 		for(uint32_t m=0; m<numfactors; ++m){
 
@@ -1124,7 +1130,7 @@ void cl_sieve( sclHard hardware, searchData & sd ){
 			sclEnqueueKernel(hardware, pd.clearresult);
 		}
 
-		// get primes
+		// get a segment of primes.  very fast, target kernel time is 1ms
 		int32_t wheelidx;
 		uint64_t kernel_start = sd.p;
 		findWheelOffset(kernel_start, wheelidx);
@@ -1152,9 +1158,9 @@ void cl_sieve( sclHard hardware, searchData & sd ){
 			getResults(pd, sd, hardware);
 			sclEnqueueKernel(hardware, pd.clearresult);
 			sclReleaseMemObject(d_verify);
-			fprintf(stderr,"Setup and verified power table with %u terms.  Starting sieve...\n",smcount);
+			fprintf(stderr,"Setup and verified power table with %u primes (%" PRIu64 " bytes).  Starting sieve...\n",smcount, (uint64_t)smcount*2*4);
 			if(boinc_is_standalone()){
-				printf("Setup and verified power table with %u terms.  Starting sieve...\n",smcount);
+				printf("Setup and verified power table with %u primes (%" PRIu64 " bytes).  Starting sieve...\n",smcount, (uint64_t)smcount*2*4);
 			}
 
 			smax = sstart + sd.sstep;
@@ -1298,6 +1304,9 @@ void run_test( sclHard hardware, searchData & sd ){
 
 	printf("Beginning self test of 4 ranges.\n");
 
+	time_t st, fin;
+	time(&st);
+
 //	-p 100e6 -P 101e6 -n 1e6 -N 2e6
 	sd.pmin = 100000000;
 	sd.pmax = 101000000;
@@ -1384,6 +1393,9 @@ void run_test( sclHard hardware, searchData & sd ){
 		printf("Self test FAILED!\n");
 		fprintf(stderr, "Self test FAILED!\n");
 	}
+
+	time(&fin);
+	printf("Elapsed time: %d sec.\n", (int)fin - (int)st);
 
 }
 

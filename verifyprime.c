@@ -1,12 +1,15 @@
 /* 
 	verifyprime.c
 
-	Bryan Little May 2024
+	Bryan Little October 2024
 
 	functions to verify the factor is prime and to verify the factor on CPU
 
 	Montgomery arithmetic by Yves Gallot,
 	Peter L. Montgomery, Modular multiplication without trial division, Math. Comp.44 (1985), 519–521.
+
+	Optimal 7 base primality test by Jim Sinclair
+	see https://miller-rabin.appspot.com/
 
 */
 
@@ -63,7 +66,7 @@ bool strong_prp(uint32_t base, uint64_t p, uint64_t q, uint64_t one, uint64_t pm
 		2.  a^(d*2^s) = -1 (mod p) for some s in 0 <= s < t    */
 
 	uint64_t a = m_mul(base,r2,p,q);  // convert base to montgomery form
-	uint64_t mbase = a;
+	const uint64_t mbase = a;
 
   	/* r <-- a^d mod p, assuming d odd */
 	while( curBit )
@@ -97,10 +100,11 @@ bool strong_prp(uint32_t base, uint64_t p, uint64_t q, uint64_t one, uint64_t pm
 }
 
 
-// prime if the number passes this test to all bases.  good to 2^64
+// prime if the number passes prp test to 7 bases.  good to 2^64
+// this is very fast
 bool isPrime(uint64_t p)
 {
-	const uint32_t base[12] = {2,3,5,7,11,13,17,19,23,29,31,37};
+	const uint32_t bases[7] = {2, 325, 9375, 28178, 450775, 9780504, 1795265022};
 
 	if (p % 2==0)
 		return false;
@@ -118,9 +122,20 @@ bool isPrime(uint64_t p)
 	uint64_t curBit = 0x8000000000000000;
 	curBit >>= ( __builtin_clzll(exp) + 1 );
 
-	for (int i = 0; i < 12; ++i)
-		if (!strong_prp(base[i], p, q, one, pmo, r2, t, exp, curBit))
+	for (int i = 0; i < 7; ++i){
+
+		uint32_t base = bases[i];
+
+		// needed for composite bases
+		if (base >= p){
+			base %= p;
+			if (base == 0)
+				continue;
+		}
+
+		if (!strong_prp(base, p, q, one, pmo, r2, t, exp, curBit))
 			return false;
+	}
 
 	return true;
 }
@@ -130,15 +145,18 @@ bool isPrime(uint64_t p)
 // verifies the factor on CPU using slow algorithm
 bool verify(uint64_t p, uint32_t n, int32_t c)
 {
-	uint64_t result = 2;
+	// precompute 34! that fits in 128 bits
+	const unsigned __int128 f34 = ((unsigned __int128)0xde1bc4d19efcac82 << 64) | 0x445da75b00000000;
+
+	uint64_t result = f34 % p;
 
 	if(p < 0xFFFFFFFF){
-		for(uint32_t i=3; i<=n; ++i){
+		for(uint32_t i=35; i<=n; ++i){
 			result = (result * i) % p;
 		}
 	}
 	else{
-		for(uint32_t i=3; i<=n; ++i){
+		for(uint32_t i=35; i<=n; ++i){
 			result = ((unsigned __int128)result * i) % p;
 		}
 	}

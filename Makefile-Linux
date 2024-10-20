@@ -4,9 +4,11 @@ LD = $(CC)
 .SUFFIXES:
 .SUFFIXES: .o .c .h .cl .cpp
 
-VER = 24_8_14
+VERSION_MAJOR := 1
+VERSION_MINOR := 0
+date := $(shell date +%Y%m%d)
 
-APP = FactSieve-linux64-$(VER)
+APP = FactSieve-linux64-v$(VERSION_MAJOR).$(VERSION_MINOR)-$(date)
 
 SRC = main.cpp cl_sieve.cpp cl_sieve.h simpleCL.c simpleCL.h kernels/check.cl kernels/clearn.cl kernels/clearresult.cl kernels/getsegprimes.cl kernels/iterate.cl kernels/powers.cl kernels/setup.cl kernels/check.cl kernels/verifyslow.cl kernels/verifypow.cl kernels/verifyreduce.cl kernels/verifyresult.cl putil.c putil.h verifyprime.c verifyprime.h
 KERNEL_HEADERS = kernels/check.h kernels/clearn.h kernels/clearresult.h kernels/iterate.h kernels/powers.h kernels/setup.h kernels/check.h kernels/getsegprimes.h kernels/verifyslow.h kernels/verifypow.h kernels/verifyreduce.h kernels/verifyresult.h
@@ -19,7 +21,7 @@ BOINC_DIR = /home/bryan/boinc
 BOINC_INC = -I$(BOINC_DIR)/lib -I$(BOINC_DIR)/api -I$(BOINC_DIR)
 BOINC_LIB = -L$(BOINC_DIR)/lib -L$(BOINC_DIR)/api -L$(BOINC_DIR) -lboinc_opencl -lboinc_api -lboinc -lpthread
 
-CFLAGS  = -I . -I kernels -O3 -m64 -Wall -DVERS=\"$(VER)\"
+CFLAGS  = -I . -I kernels -O3 -m64 -Wall -DVERSION_MAJOR=\"$(VERSION_MAJOR)\" -DVERSION_MINOR=\"$(VERSION_MINOR)\"
 LDFLAGS = $(CFLAGS) -static-libgcc -static-libstdc++ -fopenmp
 
 all : clean $(APP)

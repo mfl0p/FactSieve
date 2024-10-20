@@ -638,8 +638,6 @@ unsigned long int _sclGetMaxGlobalMemSize( cl_device_id device ){
 }
 
 
-
-// Bryan Little added opt flag to turn on/off optimizations during kernel compile
 sclSoft sclGetCLSoftware( const char* source, const char* name, sclHard hardware, int opt, int debuginfo ){
 
 	sclSoft software;
@@ -662,7 +660,6 @@ sclSoft sclGetCLSoftware( const char* source, const char* name, sclHard hardware
 	
 	/* Build the program (compile it)
    	 ############################################ */
-	// Bryan Little
    	_sclBuildProgram( software.program, hardware.device, name, opt );
    	/* ############################################ */
    	
