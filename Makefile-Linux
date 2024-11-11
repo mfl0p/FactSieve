@@ -15,7 +15,7 @@ KERNEL_HEADERS = kernels/check.h kernels/clearn.h kernels/clearresult.h kernels/
 OBJ = main.o cl_sieve.o simpleCL.o putil.o verifyprime.o
 
 OCL_INC = -I /usr/local/cuda/include/CL/
-OCL_LIB = -L . -L /usr/local/cuda-10.1/targets/x86_64-linux/lib -lOpenCL -lprimesieve
+OCL_LIB = -L . -L /usr/local/cuda-10.1/targets/x86_64-linux/lib -lOpenCL
 
 BOINC_DIR = /home/bryan/boinc
 BOINC_INC = -I$(BOINC_DIR)/lib -I$(BOINC_DIR)/api -I$(BOINC_DIR)
@@ -27,7 +27,7 @@ LDFLAGS = $(CFLAGS) -static-libgcc -static-libstdc++ -fopenmp
 all : clean $(APP)
 
 $(APP) : $(OBJ)
-	$(LD) $(LDFLAGS) $^ $(OCL_LIB) $(BOINC_LIB) -o $@
+	$(LD) $(LDFLAGS) $^ $(OCL_LIB) $(BOINC_LIB) -o $@ /usr/lib/gcc/x86_64-linux-gnu/7/libgomp.a -ldl libprimesieve.a
 
 main.o : $(SRC)
 	$(CC) $(CFLAGS) $(OCL_INC) $(BOINC_INC) -fopenmp -c -o $@ main.cpp
