@@ -25,7 +25,7 @@ ulong mul_wide_u32 (const uint a, const uint b) {
 
 
 __kernel void powers(	__global uint * g_smallprimes,
-			__global uint * g_smallpowers,
+			__global uint2 * g_smallpowers,
 			const uint stride, const uint startN, const uint smallcount )
 {
 	const uint gid = get_global_id(0);
@@ -50,7 +50,13 @@ __kernel void powers(	__global uint * g_smallprimes,
 			}
 		}
 
-		g_smallpowers[position] = totalpower;
+		uint curBit = 0x80000000;
+
+		if(totalpower > 1){
+			curBit >>= ( clz(totalpower) + 1 );
+		}
+
+		g_smallpowers[position] = (uint2)(totalpower, curBit);
 
 	}
 

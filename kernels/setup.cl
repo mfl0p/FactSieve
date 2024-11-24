@@ -67,62 +67,59 @@ ulong add(ulong a, ulong b, ulong p)
 }
 
 __kernel void setup(__global ulong8 * g_prime, __global uint * g_primecount,
-		 	__global uint * g_smallprimes, __global uint * g_smallpowers, const uint start, const uint end) {
+		 	__global uint * g_smallprimes, __global uint2 * g_smallpowers, const uint start, const uint end) {
 
 	const uint gid = get_global_id(0);
 
 	if(gid < g_primecount[0]){
 
 		// .s0=p, .s1=q, .s2=r2, .s3=one, .s4=two, .s5=nmo, .s6=residue of startN! mod P, .s7=startN in montgomery form
-		const ulong8 prime = g_prime[gid];
+		ulong8 prime = g_prime[gid];
 		uint i = start;
-		ulong total = prime.s6;
 
 		if(start == 0){
 			++i;
 			// first iteration, base prime = 2
-			uint exp = g_smallpowers[0];
-			// left to right binary exponentiation
-			uint curBit = 0x80000000;
-			curBit >>= ( clz(exp) + 1 );
+			// .s0=exp, .s1=curBit
+			uint2 p = g_smallpowers[0];
+			// left to right powmod
 			ulong a = prime.s4;
-			while( curBit ){
+			while( p.s1 ){
 				a = m_mul(a, a, prime.s0, prime.s1);
-				if(exp & curBit){
+				if(p.s0 & p.s1){
 					a = add(a, a, prime.s0);		// base 2 we can add
 				}
-				curBit >>= 1;
+				p.s1 >>= 1;
 			}
-			total = a;
+			prime.s6 = a;
 		}
 		for(; i<end; ++i){
 			// remaining iterations, starting at prime = 3
 			uint sm_prime = g_smallprimes[i];
-			uint exp = g_smallpowers[i];
+			// .s0=exp, .s1=curBit
+			uint2 p = g_smallpowers[i];
 			const ulong base = m_mul(sm_prime, prime.s2, prime.s0, prime.s1);
 			ulong primepow;
-			if(exp == 1){
+			if(p.s0 == 1){
 				primepow = base;
 			}
 			else{
-				uint curBit = 0x80000000;
-				curBit >>= ( clz(exp) + 1 );
 				ulong a = base;
-				while( curBit ){
+				while( p.s1 ){
 					a = m_mul(a, a, prime.s0, prime.s1);
-					if(exp & curBit){
+					if(p.s0 & p.s1){
 						a = m_mul(a, base, prime.s0, prime.s1);
 					}
-					curBit >>= 1;
+					p.s1 >>= 1;
 				}
 				primepow = a;
 			}
-			total = m_mul(total, primepow, prime.s0, prime.s1);
+			prime.s6 = m_mul(prime.s6, primepow, prime.s0, prime.s1);
 		}
 
 		// done with power table, store to global
 		// residue is equal to startN! mod P
-		g_prime[gid].s6 = total;
+		g_prime[gid].s6 = prime.s6;
 	}
 }
 

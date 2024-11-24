@@ -732,48 +732,48 @@ void profileGPU(progData & pd, searchData sd, sclHard hardware, int debuginfo ){
 
 	uint64_t estimated = calc_range;
 
-	uint64_t prof_start = sd.p;
+	uint64_t start = sd.p;
 
-	uint64_t prof_stop = prof_start + calc_range;
+	uint64_t stop = start + calc_range;
 
 	// check overflow at 2^64
-	if(prof_stop < prof_start){
-		prof_stop = 0xFFFFFFFFFFFFFFFF;
-		calc_range = prof_stop - prof_start;
+	if(stop < start){
+		stop = 0xFFFFFFFFFFFFFFFF;
+		calc_range = stop - start;
 	}
 
 	sclSetGlobalSize( pd.getsegprimes, (calc_range/60)+1 );
 
 	// get a count of primes in the gpu worksize
-	uint64_t prof_range_primes = primesieve_count_primes( prof_start, prof_stop );
+	uint64_t range_primes = (stop / log(stop)) - (start / log(start));
 
 	// calculate prime array size based on result
-	uint64_t prof_mem_size = (uint64_t)(1.5 * (double)prof_range_primes);
+	uint64_t mem_size = (uint64_t)(1.5 * (double)range_primes);
 
 	// kernels use uint for global id
-	if(prof_mem_size > UINT32_MAX){
-		fprintf(stderr, "ERROR: prof_mem_size too large.\n");
-                printf( "ERROR: prof_mem_size too large.\n" );
+	if(mem_size > UINT32_MAX){
+		fprintf(stderr, "ERROR: mem_size too large.\n");
+                printf( "ERROR: mem_size too large.\n" );
 		exit(EXIT_FAILURE);
 	}
 
 	// allocate temporary gpu prime array for profiling
-	cl_mem d_profileprime = clCreateBuffer( hardware.context, CL_MEM_READ_WRITE, prof_mem_size*sizeof(cl_ulong8), NULL, &err );
+	cl_mem d_profileprime = clCreateBuffer( hardware.context, CL_MEM_READ_WRITE, mem_size*sizeof(cl_ulong8), NULL, &err );
 	if ( err != CL_SUCCESS ) {
 		fprintf(stderr, "ERROR: clCreateBuffer failure.\n");
 	        printf( "ERROR: clCreateBuffer failure.\n" );
 		exit(EXIT_FAILURE);
 	}
 
-	int32_t prof_wheelidx;
-	uint64_t prof_kernel_start = prof_start;
+	int32_t wheelidx;
+	uint64_t kernel_start = start;
 
-	findWheelOffset(prof_kernel_start, prof_wheelidx);
+	findWheelOffset(kernel_start, wheelidx);
 
 	// set static args
-	sclSetKernelArg(pd.getsegprimes, 0, sizeof(uint64_t), &prof_kernel_start);
-	sclSetKernelArg(pd.getsegprimes, 1, sizeof(uint64_t), &prof_stop);
-	sclSetKernelArg(pd.getsegprimes, 2, sizeof(int32_t), &prof_wheelidx);
+	sclSetKernelArg(pd.getsegprimes, 0, sizeof(uint64_t), &kernel_start);
+	sclSetKernelArg(pd.getsegprimes, 1, sizeof(uint64_t), &stop);
+	sclSetKernelArg(pd.getsegprimes, 2, sizeof(int32_t), &wheelidx);
 	sclSetKernelArg(pd.getsegprimes, 3, sizeof(cl_mem), &d_profileprime);
 	sclSetKernelArg(pd.getsegprimes, 4, sizeof(cl_mem), &pd.d_primecount);
 	sclSetKernelArg(pd.getsegprimes, 5, sizeof(uint32_t), &sd.nmin);
@@ -800,17 +800,18 @@ void profileGPU(progData & pd, searchData sd, sclHard hardware, int debuginfo ){
 	}
 
 	// get a count of primes in the new gpu worksize
-	prof_stop = prof_start + calc_range;
+	stop = start + calc_range;
 
 	// check overflow at 2^64
-	if(prof_stop < prof_start){
-		prof_stop = 0xFFFFFFFFFFFFFFFF;
-		calc_range = prof_stop - prof_start;
+	if(stop < start){
+		stop = 0xFFFFFFFFFFFFFFFF;
+		calc_range = stop - start;
 	}
-	uint64_t range_primes = primesieve_count_primes( prof_start, prof_stop );
+
+	range_primes = (stop / log(stop)) - (start / log(start));
 
 	// calculate prime array size based on result
-	uint64_t mem_size = (uint64_t)( 1.5 * (double)range_primes );
+	mem_size = (uint64_t)( 1.5 * (double)range_primes );
 
 	if(mem_size > UINT32_MAX){
 		fprintf(stderr, "ERROR: mem_size too large.\n");
@@ -976,7 +977,7 @@ void cl_sieve( sclHard hardware, searchData & sd ){
                 printf( "ERROR: clCreateBuffer failure.\n" );
 		exit(EXIT_FAILURE);
 	}
-	pd.d_SmallPowers = clCreateBuffer( hardware.context, CL_MEM_READ_WRITE, smcount*sizeof(cl_uint), NULL, &err );
+	pd.d_SmallPowers = clCreateBuffer( hardware.context, CL_MEM_READ_WRITE, smcount*sizeof(cl_uint2), NULL, &err );
         if ( err != CL_SUCCESS ) {
 		fprintf(stderr, "ERROR: clCreateBuffer failure: SmallPowers array.\n");
                 printf( "ERROR: clCreateBuffer failure.\n" );
@@ -1158,9 +1159,9 @@ void cl_sieve( sclHard hardware, searchData & sd ){
 			getResults(pd, sd, hardware);
 			sclEnqueueKernel(hardware, pd.clearresult);
 			sclReleaseMemObject(d_verify);
-			fprintf(stderr,"Setup and verified power table with %u primes (%" PRIu64 " bytes).  Starting sieve...\n",smcount, (uint64_t)smcount*2*4);
+			fprintf(stderr,"Setup and verified power table with %u primes (%" PRIu64 " bytes).  Starting sieve...\n",smcount, (uint64_t)smcount*3*4);
 			if(boinc_is_standalone()){
-				printf("Setup and verified power table with %u primes (%" PRIu64 " bytes).  Starting sieve...\n",smcount, (uint64_t)smcount*2*4);
+				printf("Setup and verified power table with %u primes (%" PRIu64 " bytes).  Starting sieve...\n",smcount, (uint64_t)smcount*3*4);
 			}
 
 			smax = sstart + sd.sstep;
@@ -1284,11 +1285,11 @@ void cl_sieve( sclHard hardware, searchData & sd ){
 	boinc_end_critical_section();
 
 
-	fprintf(stderr,"Search complete.\nfactors %" PRIu64 ", prime count %" PRIu64 "\n", sd.factorcount, sd.primecount);
+	fprintf(stderr,"Sieve complete.\nfactors %" PRIu64 ", prime count %" PRIu64 "\n", sd.factorcount, sd.primecount);
 
 	if(boinc_is_standalone()){
 		time(&totalf);
-		printf("Search finished in %d sec.\n", (int)totalf - (int)totals);
+		printf("Sieve finished in %d sec.\n", (int)totalf - (int)totals);
 		printf("factors %" PRIu64 ", prime count %" PRIu64 ", checksum %016" PRIX64 "\n", sd.factorcount, sd.primecount, sd.checksum);
 	}
 

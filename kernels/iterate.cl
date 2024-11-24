@@ -78,33 +78,31 @@ __kernel void iterate(		__global ulong8 * g_prime,
 	const uint gid = get_global_id(0);
 
 	if(gid < g_primecount[0]){
-		// .s0=p, .s1=q, .s2=r2, .s3=one, .s4=two, .s5=nmo, .s6=residue of startN! mod P, .s7=startN in montgomery form
-		const ulong8 prime = g_prime[gid];
-		ulong residue = prime.s6;			// startN! mod P
-		ulong next = prime.s7;				// montgomery form of startN
+		// .s0=p, .s1=q, .s2=r2, .s3=one, .s4=two, .s5=nmo, .s6=residue, .s7=N in montgomery form
+		ulong8 prime = g_prime[gid];
 
 		for(uint currN = startN; currN < endN; ++currN){	
-			if(residue == prime.s3){
+			if(prime.s6 == prime.s3){
 				// -1 factor
 				uint i = atomic_inc(&g_primecount[2]);
 				g_specialprime[i] = prime.s0;
 				g_specialn[i] = currN;
 				g_specialval[i] = -1;
 			}
-			else if(residue == prime.s5){
+			else if(prime.s6 == prime.s5){
 				// +1 factor
 				uint i = atomic_inc(&g_primecount[2]);
 				g_specialprime[i] = prime.s0;
 				g_specialn[i] = currN;
 				g_specialval[i] = 1;
 			}
-			next = add(next, prime.s3, prime.s0);
-			residue = m_mul(residue, next, prime.s0, prime.s1);
+			prime.s7 = add(prime.s7, prime.s3, prime.s0);
+			prime.s6 = m_mul(prime.s6, prime.s7, prime.s0, prime.s1);
 		}
 
-		// store final residues
-		g_prime[gid].s6 = residue;
-		g_prime[gid].s7 = next;
+		// store final residue and n
+		g_prime[gid].s6 = prime.s6;
+		g_prime[gid].s7 = prime.s7;
 	}
 }
 

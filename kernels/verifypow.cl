@@ -65,7 +65,7 @@ ulong add(ulong a, ulong b, ulong p)
 __kernel __attribute__ ((reqd_work_group_size(256, 1, 1))) void verifypow(
 						__global ulong8 * g_prime,
 						__global uint * g_smallprimes,
-						__global uint * g_smallpowers,
+						__global uint2 * g_smallpowers,
 						__global ulong4 * g_verify,
 						const uint smallcount,
 						const uint stride) {
@@ -80,22 +80,22 @@ __kernel __attribute__ ((reqd_work_group_size(256, 1, 1))) void verifypow(
 
 	for(uint position = gid; position < smallcount; position+=stride){
 		uint sm_prime = g_smallprimes[position];
-		uint exp = g_smallpowers[position];
+		// .s0=exp, .s1=curBit
+		uint2 p = g_smallpowers[position];
 		const ulong base = m_mul(sm_prime, prime.s2, prime.s0, prime.s1);
 		ulong primepow;
-		if(exp == 1){
+		if(p.s0 == 1){
 			primepow = base;
 		}
 		else{
-			uint curBit = 0x80000000;
-			curBit >>= ( clz(exp) + 1 );
+			// left to right powmod
 			ulong a = base;
-			while( curBit ){
+			while( p.s1 ){
 				a = m_mul(a, a, prime.s0, prime.s1);
-				if(exp & curBit){
+				if(p.s0 & p.s1){
 					a = m_mul(a, base, prime.s0, prime.s1);
 				}
-				curBit >>= 1;
+				p.s1 >>= 1;
 			}
 			primepow = a;
 		}
