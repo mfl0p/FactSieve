@@ -1032,9 +1032,8 @@ void cl_sieve( sclHard hardware, searchData & sd ){
 
 	sclSetKernelArg(pd.powers, 0, sizeof(cl_mem), &pd.d_SmallPrimes);
 	sclSetKernelArg(pd.powers, 1, sizeof(cl_mem), &pd.d_SmallPowers);
-	sclSetKernelArg(pd.powers, 2, sizeof(uint32_t), &stride);
-	sclSetKernelArg(pd.powers, 3, sizeof(uint32_t), &sd.nmin);
-	sclSetKernelArg(pd.powers, 4, sizeof(uint32_t), &smcount);
+	sclSetKernelArg(pd.powers, 2, sizeof(uint32_t), &sd.nmin);
+	sclSetKernelArg(pd.powers, 3, sizeof(uint32_t), &smcount);
 
 	sclSetKernelArg(pd.getsegprimes, 3, sizeof(cl_mem), &pd.d_primes);
 	sclSetKernelArg(pd.getsegprimes, 4, sizeof(cl_mem), &pd.d_primecount);
@@ -1060,14 +1059,12 @@ void cl_sieve( sclHard hardware, searchData & sd ){
 	sclSetKernelArg(pd.verifyslow, 0, sizeof(cl_mem), &pd.d_primes);
 	sclSetKernelArg(pd.verifyslow, 1, sizeof(cl_mem), &d_verify);
 	sclSetKernelArg(pd.verifyslow, 2, sizeof(uint32_t), &sd.nmin);
-	sclSetKernelArg(pd.verifyslow, 3, sizeof(uint32_t), &stride);
 
 	sclSetKernelArg(pd.verifypow, 0, sizeof(cl_mem), &pd.d_primes);
 	sclSetKernelArg(pd.verifypow, 1, sizeof(cl_mem), &pd.d_SmallPrimes);
 	sclSetKernelArg(pd.verifypow, 2, sizeof(cl_mem), &pd.d_SmallPowers);
 	sclSetKernelArg(pd.verifypow, 3, sizeof(cl_mem), &d_verify);
 	sclSetKernelArg(pd.verifypow, 4, sizeof(uint32_t), &smcount);
-	sclSetKernelArg(pd.verifypow, 5, sizeof(uint32_t), &stride);
 
 	sclSetKernelArg(pd.verifyreduce, 0, sizeof(cl_mem), &pd.d_primes);
 	sclSetKernelArg(pd.verifyreduce, 1, sizeof(cl_mem), &d_verify);
@@ -1303,7 +1300,7 @@ void run_test( sclHard hardware, searchData & sd ){
 
 	int goodtest = 0;
 
-	printf("Beginning self test of 4 ranges.\n");
+	printf("Beginning self test of 5 ranges.\n");
 
 	time_t st, fin;
 	time(&st);
@@ -1384,9 +1381,28 @@ void run_test( sclHard hardware, searchData & sd ){
 	sd.primecount = 0;
 	sd.factorcount = 0;
 
+//	-p 1e12 -P 1000001e6 -n 10e7 -N 11e7
+	sd.pmin = 1000000000000;
+	sd.pmax = 1000001000000;
+	sd.nmin = 100000000;
+	sd.nmax = 110000000;
+	cl_sieve( hardware, sd );
+	if( sd.factorcount == 3 && sd.primecount == 36249 && sd.checksum == 0x0081056DC98DA092 ){
+		printf("test case 5 passed.\n\n");
+		fprintf(stderr,"test case 5 passed.\n");
+		++goodtest;
+	}
+	else{
+		printf("test case 5 failed.\n\n");
+		fprintf(stderr,"test case 5 failed.\n");
+	}
+	sd.checksum = 0;
+	sd.primecount = 0;
+	sd.factorcount = 0;
+
 
 //	done
-	if(goodtest == 4){
+	if(goodtest == 5){
 		printf("All test cases completed successfully!\n");
 		fprintf(stderr, "All test cases completed successfully!\n");
 	}

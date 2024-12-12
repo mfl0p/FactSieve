@@ -26,11 +26,12 @@ ulong mul_wide_u32 (const uint a, const uint b) {
 
 __kernel void powers(	__global uint * g_smallprimes,
 			__global uint2 * g_smallpowers,
-			const uint stride, const uint startN, const uint smallcount )
+			const uint startN, const uint smallcount )
 {
 	const uint gid = get_global_id(0);
+	const uint gs = get_global_size(0);
 
-	for(uint position = gid; position < smallcount; position+=stride){
+	for(uint position = gid; position < smallcount; position+=gs){
 
 		uint prime = g_smallprimes[position];
 

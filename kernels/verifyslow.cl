@@ -66,40 +66,27 @@ ulong add(ulong a, ulong b, ulong p)
 __kernel __attribute__ ((reqd_work_group_size(256, 1, 1))) void verifyslow(
 						__global ulong8 * g_prime,
 						__global ulong4 * g_verify,
-						const uint startN,
-						const uint stride )
+						const uint startN )
 {
 	const uint gid = get_global_id(0);
 	const uint lid = get_local_id(0);
+	const uint gs = get_global_size(0);
 	__local ulong total[256];
 	// .s0=p, .s1=q, .s2=r2, .s3=one, .s4=two, .s5=nmo, .s6=residue
 	const ulong8 prime = g_prime[0];
 	ulong thread_total = prime.s3;
-	const uint thread_stride = stride*10;
 	bool first_iter = true;
 
-	for(uint currN = 2 + gid*10; currN <= startN; currN += thread_stride){
+	for(uint currN = 2 + gid; currN <= startN; currN += gs){
 
-		ulong current = m_mul( currN, prime.s2, prime.s0, prime.s1);	// convert N to montgomery form
-
-		ulong next = add( current, prime.s3, prime.s0 );		// add one
-
-		uint end = currN+9;
-		if( end > startN ){
-			end = startN;
-		}
-
-		for(uint i=currN; i<end; ++i){
-			current = m_mul( current, next, prime.s0, prime.s1);
-			next = add( next, prime.s3, prime.s0 );
-		}
+		ulong n = m_mul( currN, prime.s2, prime.s0, prime.s1);	// convert N to montgomery form
 
 		if(first_iter){
 			first_iter = false;
-			thread_total = current;
+			thread_total = n;
 		}
 		else{
-			thread_total = m_mul( thread_total, current, prime.s0, prime.s1);
+			thread_total = m_mul( thread_total, n, prime.s0, prime.s1);
 		}
 	}
 

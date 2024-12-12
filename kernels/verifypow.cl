@@ -67,18 +67,18 @@ __kernel __attribute__ ((reqd_work_group_size(256, 1, 1))) void verifypow(
 						__global uint * g_smallprimes,
 						__global uint2 * g_smallpowers,
 						__global ulong4 * g_verify,
-						const uint smallcount,
-						const uint stride) {
+						const uint smallcount) {
 
 	const uint gid = get_global_id(0);
 	const uint lid = get_local_id(0);
+	const uint gs = get_global_size(0);
 	__local ulong total[256];
 	// .s0=p, .s1=q, .s2=r2, .s3=one, .s4=two, .s5=nmo, .s6=residue
 	const ulong8 prime = g_prime[0];
 	bool first_iter = true;
 	ulong thread_total = prime.s3;
 
-	for(uint position = gid; position < smallcount; position+=stride){
+	for(uint position = gid; position < smallcount; position+=gs){
 		uint sm_prime = g_smallprimes[position];
 		// .s0=exp, .s1=curBit
 		uint2 p = g_smallpowers[position];
