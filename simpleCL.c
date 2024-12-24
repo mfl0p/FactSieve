@@ -718,6 +718,19 @@ void sclRead( sclHard hardware, size_t size, cl_mem buffer, void *hostPointer ) 
 
 }
 
+void sclReadNB( sclHard hardware, size_t size, cl_mem buffer, void *hostPointer ) {
+
+	cl_int err;
+
+	err = clEnqueueReadBuffer( hardware.queue, buffer, CL_FALSE, 0, size, hostPointer, 0, NULL, NULL );
+	if ( err != CL_SUCCESS ) {
+		printf( "\nclRead Error\n" );
+		fprintf(stderr, "\nclRead Error\n" );
+		sclPrintErrorFlags( err );
+       	}
+
+}
+
 cl_int sclFinish( sclHard hardware ){
 
 	cl_int err;

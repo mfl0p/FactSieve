@@ -33,7 +33,7 @@ void help()
 	printf("-N #			End factorial N!+-1, range [-n, -N) exclusive, 127 <= -n <= n < -N < 2^31\n");
 	printf("-p #			Starting prime factor p\n");
 	printf("-P #			End prime factor P, range [-p, -P) exclusive, 127 <= -n <= -p <= p < -P < 2^64\n");
-	printf("-v #			Optional, specify the number of CPU threads used to verify factors.  Default is 2.\n");
+	printf("-v #			Optional, specify the number of CPU threads used to verify factors.  Default is 2, max is 128.\n");
 	printf("-s 			Perform self test to verify proper operation of the program with the current GPU.\n");
 	printf("-h			Print this help\n");
         boinc_finish(EXIT_FAILURE);
@@ -42,30 +42,30 @@ void help()
 
 static const char *short_opts = "p:P:n:N:v:sd:h";
 
-static int parse_option(int opt, char *arg, const char *source, searchData & sd)
+static int parse_option(int opt, char *arg, const char *source, workStatus & st, searchData & sd)
 {
   int status = 0;
 
   switch (opt)
   {
     case 'p':
-      status = parse_uint64(&sd.pmin,arg,127,0xFFFFFFFFFFFFFFFF-1);
+      status = parse_uint64(&st.pmin,arg,127,0xFFFFFFFFFFFFFFFF-1);
       break;
 
     case 'P':
-      status = parse_uint64(&sd.pmax,arg,128,0xFFFFFFFFFFFFFFFF);
+      status = parse_uint64(&st.pmax,arg,128,0xFFFFFFFFFFFFFFFF);
       break;
       
     case 'n':
-      status = parse_uint(&sd.nmin,arg,127,0x7FFFFFFF-1);
+      status = parse_uint(&st.nmin,arg,127,0x7FFFFFFF-1);
       break;
 
     case 'N':
-      status = parse_uint(&sd.nmax,arg,128,0x7FFFFFFF);
+      status = parse_uint(&st.nmax,arg,128,0x7FFFFFFF);
       break;
 
     case 'v':
-      status = parse_uint(&sd.threadcount,arg,1,64);
+      status = parse_uint(&sd.threadcount,arg,1,128);
       break;
 
     case 's':
@@ -100,12 +100,12 @@ static const struct option long_opts[] = {
    Non-option arguments are treated as if they belong to option zero.
    Returns the number of options processed.
  */
-static int process_args(int argc, char *argv[], searchData & sd)
+static int process_args(int argc, char *argv[], workStatus & st, searchData & sd)
 {
   int count = 0, ind = -1, opt;
 
   while ((opt = getopt_long(argc,argv,short_opts,long_opts,&ind)) != -1)
-    switch (parse_option(opt,optarg,NULL,sd))
+    switch (parse_option(opt,optarg,NULL,st,sd))
     {
       case 0:
         ind = -1;
@@ -142,7 +142,7 @@ static int process_args(int argc, char *argv[], searchData & sd)
     }
 
   while (optind < argc)
-    switch (parse_option(0,argv[optind],NULL,sd))
+    switch (parse_option(0,argv[optind],NULL,st,sd))
     {
       case 0:
         optind++;
@@ -188,8 +188,12 @@ double getSysOpType()
 
 int main(int argc, char *argv[])
 { 
-	sclHard hardware;
-	searchData sd;
+	sclHard hardware = {};
+	searchData sd = {};
+	sd.numresults = 1000000;
+	sd.write_state_a_next = true;
+	sd.threadcount = 2;
+	workStatus st = {};
 
         // Initialize BOINC
         BOINC_OPTIONS options;
@@ -210,7 +214,7 @@ int main(int argc, char *argv[])
         	fprintf(stderr, "%s ", argv[i]);
         fprintf(stderr, "\n");
 
-	process_args(argc,argv,sd);
+	process_args(argc,argv,st,sd);
 
 	omp_set_num_threads(sd.threadcount);
 
@@ -274,6 +278,7 @@ int main(int argc, char *argv[])
  	char device_vend[1024];
  	char device_driver[1024];
 	cl_uint CUs;
+	cl_ulong maxMemAllocSize;
 
 	err = clGetDeviceInfo(device, CL_DEVICE_NAME, sizeof(device_name), &device_name, NULL);
 	if (err != CL_SUCCESS) {
@@ -295,6 +300,12 @@ int main(int argc, char *argv[])
 		printf( "clGetDeviceInfo failed with %d\n", err );
 		exit(EXIT_FAILURE);
 	}
+	err = clGetDeviceInfo(device, CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(cl_ulong), &maxMemAllocSize, NULL);
+	if (err != CL_SUCCESS) {
+		printf( "clGetDeviceInfo failed with %d\n", err );
+		exit(EXIT_FAILURE);
+	}
+	sd.maxmalloc = (uint32_t)maxMemAllocSize;
 
 	fprintf(stderr, "GPU Info:\n  Name: \t\t%s\n  Vendor: \t\t%s\n  Driver: \t\t%s\n  Compute Units: \t%u\n", device_name, device_vend, device_driver, CUs);
 	if(boinc_is_standalone()){
@@ -303,7 +314,7 @@ int main(int argc, char *argv[])
 
 	// check vendor and normalize compute units
 	// kernel size will be determined by profiling so this doesn't have to be accurate.
-	int computeunits = (int)CUs;
+	sd.computeunits = (uint32_t)CUs;
 	char intel_s[] = "Intel";
 	char arc_s[] = "Arc";
 	char nvidia_s[] = "NVIDIA";	
@@ -361,33 +372,31 @@ int main(int argc, char *argv[])
 	else if( strstr((char*)device_vend, (char*)intel_s) != NULL ){
 
 		if( strstr((char*)device_name, (char*)arc_s) != NULL ){
-			computeunits /= 10;
+			sd.computeunits /= 10;
 		}
 		else{
-			computeunits /= 20;
+			sd.computeunits /= 20;
 	                fprintf(stderr,"Detected Intel integrated graphics\n");	
 		}
 
 	}
 	// AMD
         else{
-		computeunits /= 2;
+		sd.computeunits /= 2;
         }
 
 
-	if(computeunits < 1){
-		computeunits = 1;
+	if(!sd.computeunits){
+		sd.computeunits++;
 	}
-
-	sd.computeunits = computeunits;
 
 	
 	if(sd.test == true){
-		run_test(hardware, sd);
+		run_test(hardware, st, sd);
 
 	}
 	else{
-		cl_sieve(hardware, sd);
+		cl_sieve(hardware, st, sd);
 	}
 
 

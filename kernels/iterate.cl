@@ -69,9 +69,7 @@ ulong add(ulong a, ulong b, ulong p)
 
 __kernel void iterate(		__global ulong8 * g_prime,
 				__global uint * g_primecount,
-				__global ulong * g_specialprime,
-				__global uint * g_specialn,
-				__global int * g_specialval,
+				__global ulong2 * g_factor,
 				const uint startN,
 				const uint endN )
 {
@@ -85,16 +83,14 @@ __kernel void iterate(		__global ulong8 * g_prime,
 			if(prime.s6 == prime.s3){
 				// -1 factor
 				uint i = atomic_inc(&g_primecount[2]);
-				g_specialprime[i] = prime.s0;
-				g_specialn[i] = currN;
-				g_specialval[i] = -1;
+				int n = -((int)currN);				// sign bit of n is factor +1 or -1
+				g_factor[i] = (ulong2)(prime.s0, (ulong)n);
 			}
 			else if(prime.s6 == prime.s5){
 				// +1 factor
 				uint i = atomic_inc(&g_primecount[2]);
-				g_specialprime[i] = prime.s0;
-				g_specialn[i] = currN;
-				g_specialval[i] = 1;
+				int n = (int)currN;
+				g_factor[i] = (ulong2)(prime.s0, (ulong)n);
 			}
 			prime.s7 = add(prime.s7, prime.s3, prime.s0);
 			prime.s6 = m_mul(prime.s6, prime.s7, prime.s0, prime.s1);
