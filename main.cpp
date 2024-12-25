@@ -305,7 +305,7 @@ int main(int argc, char *argv[])
 		printf( "clGetDeviceInfo failed with %d\n", err );
 		exit(EXIT_FAILURE);
 	}
-	sd.maxmalloc = (uint32_t)maxMemAllocSize;
+	sd.maxmalloc = (uint64_t)maxMemAllocSize;
 
 	fprintf(stderr, "GPU Info:\n  Name: \t\t%s\n  Vendor: \t\t%s\n  Driver: \t\t%s\n  Compute Units: \t%u\n", device_name, device_vend, device_driver, CUs);
 	if(boinc_is_standalone()){

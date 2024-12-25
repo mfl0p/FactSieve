@@ -8,7 +8,8 @@ typedef struct {
 
 
 typedef struct {
-	uint32_t computeunits, nstep, sstep, numresults, threadcount, range, psize, numgroups, maxmalloc;
+	uint64_t maxmalloc;
+	uint32_t computeunits, nstep, sstep, numresults, threadcount, range, psize, numgroups;
 	bool test, compute, write_state_a_next;
 }searchData;
 

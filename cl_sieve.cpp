@@ -40,8 +40,8 @@
 #include "verifyprime.h"
 
 #define RESULTS_FILENAME "factors.txt"
-#define STATE_FILENAME_A "stateA.txt"
-#define STATE_FILENAME_B "stateB.txt"
+#define STATE_FILENAME_A "stateA.ckp"
+#define STATE_FILENAME_B "stateB.ckp"
 
 
 
@@ -549,8 +549,8 @@ void getResults( progData & pd, workStatus & st, searchData & sd, sclHard hardwa
 				fc = 1;
 			}
 			if( verify( fp, fn, fc ) == false ){
-				fprintf(stderr,"CPU factor verification failed!  %" PRIu64 " is not a factor of %d!%+d\n", fp, fn, fc);
-				printf("\nCPU factor verification failed!  %" PRIu64 " is not a factor of %d!%+d\n", fp, fn, fc);
+				fprintf(stderr,"CPU factor verification failed!  %" PRIu64 " is not a factor of %u!%+d\n", fp, fn, fc);
+				printf("\nCPU factor verification failed!  %" PRIu64 " is not a factor of %u!%+d\n", fp, fn, fc);
 				exit(EXIT_FAILURE);
 			}
 
@@ -588,7 +588,6 @@ void getResults( progData & pd, workStatus & st, searchData & sd, sclHard hardwa
 		uint64_t lastgoodp = 0;
 
 		for(uint32_t i=0; i<numfactors; ++i){
-
 			uint64_t fp = h_factor[i].s0;
 			int32_t j = (int32_t)h_factor[i].s1;
 			uint32_t fn; 
@@ -805,6 +804,59 @@ void profileGPU(progData & pd, workStatus & st, searchData & sd, sclHard hardwar
 }
 
 
+void finalizeResults( workStatus & st ){
+
+	char line[256];
+	uint32_t lc = 0;
+	FILE * resfile;
+
+	if(st.factorcount){
+		// check result file has the same number of lines as the factor count
+		resfile = my_fopen(RESULTS_FILENAME,"r");
+
+		if(resfile == NULL){
+			fprintf(stderr,"Cannot open %s !!!\n",RESULTS_FILENAME);
+			exit(EXIT_FAILURE);
+		}
+
+		while(fgets(line, sizeof(line), resfile) != NULL) {
+			++lc;
+		}
+
+		fclose(resfile);
+
+		if(lc != st.factorcount){
+			fprintf(stderr,"ERROR: Possible missing factors in %s !!!\n",RESULTS_FILENAME);
+			printf("ERROR: Possible missing factors in %s !!!\n",RESULTS_FILENAME);
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	// print checksum
+	resfile = my_fopen(RESULTS_FILENAME,"a");
+
+	if(resfile == NULL){
+		fprintf(stderr,"Cannot open %s !!!\n",RESULTS_FILENAME);
+		exit(EXIT_FAILURE);
+	}
+
+	if(st.factorcount){
+		if( fprintf( resfile, "%016" PRIX64 "\n", st.checksum ) < 0 ){
+			fprintf(stderr,"Cannot write to %s !!!\n",RESULTS_FILENAME);
+			exit(EXIT_FAILURE);
+		}
+	}
+	else{
+		if( fprintf( resfile, "no factors\n%016" PRIX64 "\n", st.checksum ) < 0 ){
+			fprintf(stderr,"Cannot write to %s !!!\n",RESULTS_FILENAME);
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	fclose(resfile);
+}
+
+
 void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 
 	progData pd = {};
@@ -946,20 +998,22 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 	// primes for power table
 	size_t primelistsize;
 	uint32_t *smlist = (uint32_t*)primesieve_generate_primes(2, st.nmin, &primelistsize, UINT32_PRIMES);
+	uint64_t size_pri = primelistsize*sizeof(cl_uint);
+	uint64_t size_pow = primelistsize*sizeof(cl_uint2);
 	uint32_t smcount = (uint32_t)primelistsize;
 
-	if( sd.maxmalloc < smcount*sizeof(cl_uint) || sd.maxmalloc < smcount*sizeof(cl_uint2) ){
-		fprintf(stderr, "ERROR: power table size is %" PRIu64 " bytes.  Device supports allocation up to %u bytes.\n", smcount*sizeof(cl_uint2), sd.maxmalloc);
-                printf( "ERROR: power table size is %" PRIu64 " bytes.  Device supports allocation up to %u bytes.\n", smcount*sizeof(cl_uint2), sd.maxmalloc);
+	if( sd.maxmalloc < size_pri || sd.maxmalloc < size_pow ){
+		fprintf(stderr, "ERROR: power table size is %" PRIu64 " bytes.  Device supports allocation up to %" PRIu64 " bytes.\n", size_pow, sd.maxmalloc);
+                printf( "ERROR: power table size is %" PRIu64 " bytes.  Device supports allocation up to %" PRIu64 " bytes.\n", size_pow, sd.maxmalloc);
 		exit(EXIT_FAILURE);
 	}
-	pd.d_SmallPrimes = clCreateBuffer( hardware.context, CL_MEM_READ_WRITE, smcount*sizeof(cl_uint), NULL, &err );
+	pd.d_SmallPrimes = clCreateBuffer( hardware.context, CL_MEM_READ_ONLY, size_pri, NULL, &err );
         if ( err != CL_SUCCESS ) {
 		fprintf(stderr, "ERROR: clCreateBuffer failure: SmallPrimes array\n");
                 printf( "ERROR: clCreateBuffer failure.\n" );
 		exit(EXIT_FAILURE);
 	}
-	pd.d_SmallPowers = clCreateBuffer( hardware.context, CL_MEM_READ_WRITE, smcount*sizeof(cl_uint2), NULL, &err );
+	pd.d_SmallPowers = clCreateBuffer( hardware.context, CL_MEM_READ_WRITE, size_pow, NULL, &err );
         if ( err != CL_SUCCESS ) {
 		fprintf(stderr, "ERROR: clCreateBuffer failure: SmallPowers array.\n");
                 printf( "ERROR: clCreateBuffer failure.\n" );
@@ -967,7 +1021,7 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 	}
 
 	// send primes to gpu, blocking
-	sclWrite(hardware, smcount * sizeof(uint32_t), pd.d_SmallPrimes, smlist);
+	sclWrite(hardware, size_pri, pd.d_SmallPrimes, smlist);
 
 	free(smlist);
 
@@ -1136,9 +1190,9 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 			getResults(pd, st, sd, hardware, h_checksum, h_primecount);
 			sclEnqueueKernel(hardware, pd.clearresult);
 			sclReleaseMemObject(d_verify);
-			fprintf(stderr,"Setup and verified power table with %u primes (%" PRIu64 " bytes).  Starting sieve...\n",smcount, (uint64_t)smcount*3*4);
+			fprintf(stderr,"Setup and verified power table with %u primes (%" PRIu64 " bytes).  Starting sieve...\n",smcount, size_pri+size_pow);
 			if(boinc_is_standalone()){
-				printf("Setup and verified power table with %u primes (%" PRIu64 " bytes).  Starting sieve...\n",smcount, (uint64_t)smcount*3*4);
+				printf("Setup and verified power table with %u primes (%" PRIu64 " bytes).  Starting sieve...\n",smcount, size_pri+size_pow);
 			}
 
 			smax = sstart + sd.sstep;
@@ -1149,7 +1203,7 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 			sstart += sd.sstep;
 			double multi = (sd.compute)?(50.0 / kernel_ms):(20.0 / kernel_ms);	// target kernel time 50ms or 20ms, first iterations have large powers, avg kernel time is less
 			uint32_t new_sstep = (uint32_t)( ((double)sd.sstep) * multi);
-			if(new_sstep == 0) new_sstep=1;
+			if(!new_sstep) new_sstep=1;
 			sd.sstep = new_sstep;
 		}
 
@@ -1183,7 +1237,7 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 			nstart += sd.nstep;
 			double multi = (sd.compute)?(50.0 / kernel_ms):(10.0 / kernel_ms);	// target kernel time 50ms or 10ms
 			uint32_t new_nstep = (uint32_t)( ((double)sd.nstep) * multi);
-			if(new_nstep == 0) new_nstep=1;
+			if(!new_nstep) new_nstep=1;
 			sd.nstep = new_nstep;
 			fprintf(stderr,"c: %u u: %u t: %u p: %u s: %u n: %u\n", (uint32_t)sd.compute, sd.computeunits, sd.threadcount, sd.range, sd.sstep, sd.nstep);
 			if(boinc_is_standalone()){
@@ -1232,38 +1286,15 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 		waitOnEvent(hardware, launchEvent);
 	}
 	sleepCPU(hardware);
+
 	boinc_begin_critical_section();
 	st.p = st.pmax;
 	boinc_fraction_done(1.0);
 	if(boinc_is_standalone()) printf("Sieve Progress: %.1f%%\n",100.0);
 	getResults(pd, st, sd, hardware, h_checksum, h_primecount);
 	checkpoint(st, sd);
-
-	// print checksum
-	FILE * resfile = my_fopen(RESULTS_FILENAME,"a");
-
-	if( resfile == NULL ){
-		fprintf(stderr,"Cannot open %s !!!\n",RESULTS_FILENAME);
-		exit(EXIT_FAILURE);
-	}
-
-	if(st.factorcount == 0){
-		if( fprintf( resfile, "no factors\n%016" PRIX64 "\n", st.checksum ) < 0 ){
-			fprintf(stderr,"Cannot write to %s !!!\n",RESULTS_FILENAME);
-			exit(EXIT_FAILURE);
-		}
-	}
-	else{
-		if( fprintf( resfile, "%016" PRIX64 "\n", st.checksum ) < 0 ){
-			fprintf(stderr,"Cannot write to %s !!!\n",RESULTS_FILENAME);
-			exit(EXIT_FAILURE);
-		}
-	}
-
-	fclose(resfile);
-
+	finalizeResults(st);
 	boinc_end_critical_section();
-
 
 	fprintf(stderr,"Sieve complete.\nfactors %" PRIu64 ", prime count %" PRIu64 "\n", st.factorcount, st.primecount);
 

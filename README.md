@@ -35,7 +35,7 @@ command line options
 * -N #		End factorial N!+-1, range [-n, -N) exclusive, 127 <= -n <= n < -N < 2^31
 * -p #		Starting prime factor p
 * -P #		End prime factor P, range [-p, -P) exclusive, 127 <= -n <= -p <= p < -P < 2^64
-* -v #		Optional, specify the number of CPU threads used to verify factors.  Default is 2.
+* -v #		Optional, specify the number of CPU threads used to verify factors.  Default is 2, max is 128.
 * -s		Perform self test to verify proper operation of the program with the current GPU.
 * -h		Print help.
 
