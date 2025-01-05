@@ -475,13 +475,6 @@ void getResults( progData & pd, workStatus & st, searchData & sd, sclHard hardwa
 		exit(EXIT_FAILURE);
 	}
 
-	// flag set if there is a gpu power table error
-	if(h_primecount[3] == 1){
-		fprintf(stderr,"error: power table verification failed\n");
-		printf("error: power table verification failed\n");
-		exit(EXIT_FAILURE);
-	}
-
 	// flag set if there is a gpu overflow error
 	if(h_primecount[4] == 1){
 		fprintf(stderr,"error: getsegprimes kernel local memory overflow\n");
@@ -825,9 +818,9 @@ void finalizeResults( workStatus & st ){
 
 		fclose(resfile);
 
-		if(lc != st.factorcount){
-			fprintf(stderr,"ERROR: Possible missing factors in %s !!!\n",RESULTS_FILENAME);
-			printf("ERROR: Possible missing factors in %s !!!\n",RESULTS_FILENAME);
+		if(lc < st.factorcount){
+			fprintf(stderr,"ERROR: Missing factors in %s !!!\n",RESULTS_FILENAME);
+			printf("ERROR: Missing factors in %s !!!\n",RESULTS_FILENAME);
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -854,6 +847,183 @@ void finalizeResults( workStatus & st ){
 	}
 
 	fclose(resfile);
+}
+
+
+void setupPowerTable(progData & pd, workStatus & st, searchData & sd, sclHard hardware, uint32_t * h_primecount ){
+
+	cl_int err = 0;
+	uint32_t stride = 2560000;
+
+	// primes for power table
+	size_t primelistsize;
+	uint32_t *smlist = (uint32_t*)primesieve_generate_primes(2, st.nmin, &primelistsize, UINT32_PRIMES);
+	uint64_t size_pri = primelistsize*sizeof(cl_uint);
+	uint64_t size_pow = primelistsize*sizeof(cl_uint2);
+	sd.smcount = (uint32_t)primelistsize;
+
+	if( sd.maxmalloc < size_pri || sd.maxmalloc < size_pow ){
+		fprintf(stderr, "ERROR: power table size is %" PRIu64 " bytes.  Device supports allocation up to %" PRIu64 " bytes.\n", size_pow, sd.maxmalloc);
+                printf( "ERROR: power table size is %" PRIu64 " bytes.  Device supports allocation up to %" PRIu64 " bytes.\n", size_pow, sd.maxmalloc);
+		exit(EXIT_FAILURE);
+	}
+	pd.d_SmallPrimes = clCreateBuffer( hardware.context, CL_MEM_READ_ONLY, size_pri, NULL, &err );
+        if ( err != CL_SUCCESS ) {
+		fprintf(stderr, "ERROR: clCreateBuffer failure: SmallPrimes array\n");
+                printf( "ERROR: clCreateBuffer failure.\n" );
+		exit(EXIT_FAILURE);
+	}
+	pd.d_SmallPowers = clCreateBuffer( hardware.context, CL_MEM_READ_WRITE, size_pow, NULL, &err );
+        if ( err != CL_SUCCESS ) {
+		fprintf(stderr, "ERROR: clCreateBuffer failure: SmallPowers array.\n");
+                printf( "ERROR: clCreateBuffer failure.\n" );
+		exit(EXIT_FAILURE);
+	}
+
+	// send primes to gpu, non-blocking
+	sclWriteNB(hardware, size_pri, pd.d_SmallPrimes, smlist);
+
+	// setup power tables
+	sclSetGlobalSize( pd.powers, stride );
+	sclSetKernelArg(pd.powers, 0, sizeof(cl_mem), &pd.d_SmallPrimes);
+	sclSetKernelArg(pd.powers, 1, sizeof(cl_mem), &pd.d_SmallPowers);
+	sclSetKernelArg(pd.powers, 2, sizeof(uint32_t), &st.nmin);
+	sclSetKernelArg(pd.powers, 3, sizeof(uint32_t), &sd.smcount);
+	sclEnqueueKernel(hardware, pd.powers);
+
+	// get powers from gpu, blocking
+	cl_uint2 * h_pow = (cl_uint2 *)malloc(size_pow);
+	if( h_pow == NULL ){
+		fprintf(stderr,"malloc error: h_pow\n");
+		exit(EXIT_FAILURE);
+	}
+	cl_uint2 * h_newpow = (cl_uint2 *)malloc(size_pow);
+	if( h_newpow == NULL ){
+		fprintf(stderr,"malloc error: h_newpow\n");
+		exit(EXIT_FAILURE);
+	}
+	cl_ulong * h_newp = (cl_ulong *)malloc(primelistsize*sizeof(cl_ulong));
+	if( h_newp == NULL ){
+		fprintf(stderr,"malloc error: h_newp\n");
+		exit(EXIT_FAILURE);
+	}
+	sclRead(hardware, size_pow, pd.d_SmallPowers, h_pow);
+	sclReleaseMemObject(pd.d_SmallPrimes);
+	sclReleaseMemObject(pd.d_SmallPowers);
+
+	// compress the power table by combining primes with the same power.  note the new prime array is 64 bit
+	uint32_t k;
+	uint64_t m=0;
+	// skip prime = 2
+	h_newp[m] = smlist[m];
+	h_newpow[m] = h_pow[m];
+	++m;
+	for(uint32_t j=m; j<sd.smcount; ){
+		h_newp[m] = smlist[j];
+		h_newpow[m] = h_pow[j];
+		for( k=j+1; k<sd.smcount && h_pow[j].s0 == h_pow[k].s0; ++k){
+			unsigned __int128 pp = (unsigned __int128)h_newp[m] * smlist[k];
+			if(pp < 0xFFFFFFFFFFFFFFFF){
+				h_newp[m] = pp;
+			}
+			else{
+				break;
+			}
+		}
+		j=k;
+		++m;
+	}
+
+	fprintf(stderr,"Compressed %u power table terms to %u\n",sd.smcount,(uint32_t)m);
+	if(boinc_is_standalone()){
+		printf("Compressed %u power table terms to %u\n",sd.smcount,(uint32_t)m);
+	}
+
+	size_pri = m*sizeof(cl_ulong);
+	size_pow = m*sizeof(cl_uint2);
+	sd.smcount = m;
+
+	pd.d_SmallPrimes = clCreateBuffer( hardware.context, CL_MEM_READ_ONLY, size_pri, NULL, &err );
+	if ( err != CL_SUCCESS ) {
+		fprintf(stderr, "ERROR: clCreateBuffer failure: SmallPrimes array\n");
+		printf( "ERROR: clCreateBuffer failure.\n" );
+		exit(EXIT_FAILURE);
+	}
+	pd.d_SmallPowers = clCreateBuffer( hardware.context, CL_MEM_READ_ONLY, size_pow, NULL, &err );
+	if ( err != CL_SUCCESS ) {
+		fprintf(stderr, "ERROR: clCreateBuffer failure: SmallPowers array.\n");
+		printf( "ERROR: clCreateBuffer failure.\n" );
+		exit(EXIT_FAILURE);
+	}
+
+	// send read only prime/power tables to gpu, blocking
+	sclWriteNB(hardware, size_pri, pd.d_SmallPrimes, h_newp);
+	sclWrite(hardware, size_pow, pd.d_SmallPowers, h_newpow);
+
+	free(smlist);
+	free(h_pow);
+	free(h_newpow);
+	free(h_newp);
+
+	// verify the new power table
+	sclSetGlobalSize( pd.verifyslow, stride );
+	sclSetGlobalSize( pd.verifypow, stride );
+	uint32_t ver_groups = stride / 256;				// 10000
+	sclSetGlobalSize( pd.verifyreduce, ver_groups );
+	uint32_t red_groups = (ver_groups / 256)+1;			// 40
+	sclSetGlobalSize( pd.verifyresult, red_groups );
+
+	cl_mem d_verify = clCreateBuffer( hardware.context, CL_MEM_READ_WRITE, ver_groups*sizeof(cl_ulong4), NULL, &err );
+        if ( err != CL_SUCCESS ) {
+		fprintf(stderr, "ERROR: clCreateBuffer failure.\n");
+                printf( "ERROR: clCreateBuffer failure.\n" );
+		exit(EXIT_FAILURE);
+	}
+
+	sclSetKernelArg(pd.verifyslow, 0, sizeof(cl_mem), &pd.d_primes);
+	sclSetKernelArg(pd.verifyslow, 1, sizeof(cl_mem), &d_verify);
+	sclSetKernelArg(pd.verifyslow, 2, sizeof(uint32_t), &st.nmin);
+
+	sclSetKernelArg(pd.verifypow, 0, sizeof(cl_mem), &pd.d_primes);
+	sclSetKernelArg(pd.verifypow, 1, sizeof(cl_mem), &pd.d_SmallPrimes);
+	sclSetKernelArg(pd.verifypow, 2, sizeof(cl_mem), &pd.d_SmallPowers);
+	sclSetKernelArg(pd.verifypow, 3, sizeof(cl_mem), &d_verify);
+	sclSetKernelArg(pd.verifypow, 4, sizeof(uint32_t), &sd.smcount);
+
+	sclSetKernelArg(pd.verifyreduce, 0, sizeof(cl_mem), &pd.d_primes);
+	sclSetKernelArg(pd.verifyreduce, 1, sizeof(cl_mem), &d_verify);
+	sclSetKernelArg(pd.verifyreduce, 2, sizeof(uint32_t), &ver_groups);
+
+	sclSetKernelArg(pd.verifyresult, 0, sizeof(cl_mem), &pd.d_primes);
+	sclSetKernelArg(pd.verifyresult, 1, sizeof(cl_mem), &d_verify);
+	sclSetKernelArg(pd.verifyresult, 2, sizeof(cl_mem), &pd.d_primecount);
+	sclSetKernelArg(pd.verifyresult, 3, sizeof(uint32_t), &red_groups);
+
+	sclEnqueueKernel(hardware, pd.verifyslow);
+	sclEnqueueKernel(hardware, pd.verifypow);
+	sclEnqueueKernel(hardware, pd.verifyreduce);
+	sclEnqueueKernel(hardware, pd.verifyresult);
+
+	// copy verification flag to host memory, blocking
+	sclRead(hardware, 6*sizeof(uint32_t), pd.d_primecount, h_primecount);
+
+	// flag set if there is a gpu power table error
+	if(h_primecount[3] == 1){
+		fprintf(stderr,"error: power table verification failed\n");
+		printf("error: power table verification failed\n");
+		exit(EXIT_FAILURE);
+	}
+
+	fprintf(stderr,"Verified power table (%" PRIu64 " bytes) starting sieve...\n", size_pri+size_pow);
+	if(boinc_is_standalone()){
+		printf("Verified power table (%" PRIu64 " bytes) starting sieve...\n", size_pri+size_pow);
+	}
+
+	sclReleaseMemObject(d_verify);
+
+	sclSetKernelArg(pd.setup, 2, sizeof(cl_mem), &pd.d_SmallPrimes);
+	sclSetKernelArg(pd.setup, 3, sizeof(cl_mem), &pd.d_SmallPowers);
+
 }
 
 
@@ -995,51 +1165,11 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 		exit(EXIT_FAILURE);
 	}
 
-	// primes for power table
-	size_t primelistsize;
-	uint32_t *smlist = (uint32_t*)primesieve_generate_primes(2, st.nmin, &primelistsize, UINT32_PRIMES);
-	uint64_t size_pri = primelistsize*sizeof(cl_uint);
-	uint64_t size_pow = primelistsize*sizeof(cl_uint2);
-	uint32_t smcount = (uint32_t)primelistsize;
-
-	if( sd.maxmalloc < size_pri || sd.maxmalloc < size_pow ){
-		fprintf(stderr, "ERROR: power table size is %" PRIu64 " bytes.  Device supports allocation up to %" PRIu64 " bytes.\n", size_pow, sd.maxmalloc);
-                printf( "ERROR: power table size is %" PRIu64 " bytes.  Device supports allocation up to %" PRIu64 " bytes.\n", size_pow, sd.maxmalloc);
-		exit(EXIT_FAILURE);
-	}
-	pd.d_SmallPrimes = clCreateBuffer( hardware.context, CL_MEM_READ_ONLY, size_pri, NULL, &err );
-        if ( err != CL_SUCCESS ) {
-		fprintf(stderr, "ERROR: clCreateBuffer failure: SmallPrimes array\n");
-                printf( "ERROR: clCreateBuffer failure.\n" );
-		exit(EXIT_FAILURE);
-	}
-	pd.d_SmallPowers = clCreateBuffer( hardware.context, CL_MEM_READ_WRITE, size_pow, NULL, &err );
-        if ( err != CL_SUCCESS ) {
-		fprintf(stderr, "ERROR: clCreateBuffer failure: SmallPowers array.\n");
-                printf( "ERROR: clCreateBuffer failure.\n" );
-		exit(EXIT_FAILURE);
-	}
-
-	// send primes to gpu, blocking
-	sclWrite(hardware, size_pri, pd.d_SmallPrimes, smlist);
-
-	free(smlist);
-
-	uint32_t stride = 2560000;
-
-	sclSetGlobalSize( pd.powers, stride );
 	sclSetGlobalSize( pd.getsegprimes, (sd.range/60)+1 );
 	sclSetGlobalSize( pd.setup, sd.psize );
 	sclSetGlobalSize( pd.iterate, sd.psize );
 	sclSetGlobalSize( pd.check, sd.psize );
 	sclSetGlobalSize( pd.clearresult, sd.numgroups );
-
-	sclSetGlobalSize( pd.verifyslow, stride );
-	sclSetGlobalSize( pd.verifypow, stride );
-	uint32_t ver_groups = stride / 256;				// 10000
-	sclSetGlobalSize( pd.verifyreduce, ver_groups );
-	uint32_t red_groups = (ver_groups / 256)+1;			// 40
-	sclSetGlobalSize( pd.verifyresult, red_groups );
 
 	pd.d_primes = clCreateBuffer(hardware.context, CL_MEM_READ_WRITE, sd.psize*sizeof(cl_ulong8), NULL, &err);
         if ( err != CL_SUCCESS ) {
@@ -1053,23 +1183,11 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
                 printf( "ERROR: clCreateBuffer failure.\n" );
 		exit(EXIT_FAILURE);
 	}
-	cl_mem d_verify = clCreateBuffer( hardware.context, CL_MEM_READ_WRITE, ver_groups*sizeof(cl_ulong4), NULL, &err );
-        if ( err != CL_SUCCESS ) {
-		fprintf(stderr, "ERROR: clCreateBuffer failure.\n");
-                printf( "ERROR: clCreateBuffer failure.\n" );
-		exit(EXIT_FAILURE);
-	}
-
 
 	// set static kernel args
 	sclSetKernelArg(pd.clearresult, 0, sizeof(cl_mem), &pd.d_primecount);
 	sclSetKernelArg(pd.clearresult, 1, sizeof(cl_mem), &pd.d_sum);
 	sclSetKernelArg(pd.clearresult, 2, sizeof(uint32_t), &sd.numgroups);
-
-	sclSetKernelArg(pd.powers, 0, sizeof(cl_mem), &pd.d_SmallPrimes);
-	sclSetKernelArg(pd.powers, 1, sizeof(cl_mem), &pd.d_SmallPowers);
-	sclSetKernelArg(pd.powers, 2, sizeof(uint32_t), &st.nmin);
-	sclSetKernelArg(pd.powers, 3, sizeof(uint32_t), &smcount);
 
 	sclSetKernelArg(pd.getsegprimes, 3, sizeof(cl_mem), &pd.d_primes);
 	sclSetKernelArg(pd.getsegprimes, 4, sizeof(cl_mem), &pd.d_primecount);
@@ -1077,8 +1195,6 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 
 	sclSetKernelArg(pd.setup, 0, sizeof(cl_mem), &pd.d_primes);
 	sclSetKernelArg(pd.setup, 1, sizeof(cl_mem), &pd.d_primecount);
-	sclSetKernelArg(pd.setup, 2, sizeof(cl_mem), &pd.d_SmallPrimes);
-	sclSetKernelArg(pd.setup, 3, sizeof(cl_mem), &pd.d_SmallPowers);
 
 	sclSetKernelArg(pd.iterate, 0, sizeof(cl_mem), &pd.d_primes);
 	sclSetKernelArg(pd.iterate, 1, sizeof(cl_mem), &pd.d_primecount);
@@ -1090,26 +1206,6 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 	sclSetKernelArg(pd.check, 3, sizeof(uint32_t), &sd.numgroups);
 	sclSetKernelArg(pd.check, 4, sizeof(uint32_t), &st.nmax);
 
-	sclSetKernelArg(pd.verifyslow, 0, sizeof(cl_mem), &pd.d_primes);
-	sclSetKernelArg(pd.verifyslow, 1, sizeof(cl_mem), &d_verify);
-	sclSetKernelArg(pd.verifyslow, 2, sizeof(uint32_t), &st.nmin);
-
-	sclSetKernelArg(pd.verifypow, 0, sizeof(cl_mem), &pd.d_primes);
-	sclSetKernelArg(pd.verifypow, 1, sizeof(cl_mem), &pd.d_SmallPrimes);
-	sclSetKernelArg(pd.verifypow, 2, sizeof(cl_mem), &pd.d_SmallPowers);
-	sclSetKernelArg(pd.verifypow, 3, sizeof(cl_mem), &d_verify);
-	sclSetKernelArg(pd.verifypow, 4, sizeof(uint32_t), &smcount);
-
-	sclSetKernelArg(pd.verifyreduce, 0, sizeof(cl_mem), &pd.d_primes);
-	sclSetKernelArg(pd.verifyreduce, 1, sizeof(cl_mem), &d_verify);
-	sclSetKernelArg(pd.verifyreduce, 2, sizeof(uint32_t), &ver_groups);
-
-	sclSetKernelArg(pd.verifyresult, 0, sizeof(cl_mem), &pd.d_primes);
-	sclSetKernelArg(pd.verifyresult, 1, sizeof(cl_mem), &d_verify);
-	sclSetKernelArg(pd.verifyresult, 2, sizeof(cl_mem), &pd.d_primecount);
-	sclSetKernelArg(pd.verifyresult, 3, sizeof(uint32_t), &red_groups);
-
-
 	time(&boinc_last);
 	time(&ckpt_last);
 	time_t totals, totalf;
@@ -1118,7 +1214,8 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 	}
 
 	float kernel_ms;
-	uint32_t kernelq = 0;
+	int kernelq = 0;
+	const int maxq = sd.compute ? 20 : 100;		// target kernel queue depth is 1 second
 	cl_event launchEvent = NULL;
 	const double irsize = 1.0 / (double)(st.pmax-st.pmin);
 
@@ -1172,7 +1269,6 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 		sclSetKernelArg(pd.getsegprimes, 2, sizeof(int32_t), &wheelidx);
 		sclEnqueueKernel(hardware, pd.getsegprimes);
 
-
 		uint32_t sstart = 0;
 		uint32_t smax;
 		uint32_t nstart = st.nmin;
@@ -1180,37 +1276,23 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 
 		// setup power table, then profile setup kernel once at program start.  adjust work size to target kernel runtime.
 		if(first_iteration){
-			// setup and verify power table
-			sclEnqueueKernel(hardware, pd.powers);
-			sclEnqueueKernel(hardware, pd.verifyslow);
-			sclEnqueueKernel(hardware, pd.verifypow);
-			sclEnqueueKernel(hardware, pd.verifyreduce);
-			sclEnqueueKernel(hardware, pd.verifyresult);
-			sleepCPU(hardware);
-			getResults(pd, st, sd, hardware, h_checksum, h_primecount);
-			sclEnqueueKernel(hardware, pd.clearresult);
-			sclReleaseMemObject(d_verify);
-			fprintf(stderr,"Setup and verified power table with %u primes (%" PRIu64 " bytes).  Starting sieve...\n",smcount, size_pri+size_pow);
-			if(boinc_is_standalone()){
-				printf("Setup and verified power table with %u primes (%" PRIu64 " bytes).  Starting sieve...\n",smcount, size_pri+size_pow);
-			}
-
+			setupPowerTable(pd, st, sd, hardware, h_primecount);
 			smax = sstart + sd.sstep;
-			if(smax > smcount)smax = smcount;
+			if(smax > sd.smcount)smax = sd.smcount;
 			sclSetKernelArg(pd.setup, 4, sizeof(uint32_t), &sstart);
 			sclSetKernelArg(pd.setup, 5, sizeof(uint32_t), &smax);
 			kernel_ms = ProfilesclEnqueueKernel(hardware, pd.setup);
 			sstart += sd.sstep;
-			double multi = (sd.compute)?(50.0 / kernel_ms):(20.0 / kernel_ms);	// target kernel time 50ms or 20ms, first iterations have large powers, avg kernel time is less
-			uint32_t new_sstep = (uint32_t)( ((double)sd.sstep) * multi);
+			double multi = sd.compute ? 50.0/kernel_ms : 20.0/kernel_ms;	// target kernel time 50ms or 20ms, first iterations have large powers, avg kernel time is less
+			uint32_t new_sstep = (uint32_t)( multi * (double)sd.sstep );
 			if(!new_sstep) new_sstep=1;
 			sd.sstep = new_sstep;
 		}
 
 		// setup residue for nmin! mod P
-		for(; sstart < smcount; sstart += sd.sstep){
+		for(; sstart < sd.smcount; sstart += sd.sstep){
 			smax = sstart + sd.sstep;
-			if(smax > smcount)smax = smcount;
+			if(smax > sd.smcount)smax = sd.smcount;
 			sclSetKernelArg(pd.setup, 4, sizeof(uint32_t), &sstart);
 			sclSetKernelArg(pd.setup, 5, sizeof(uint32_t), &smax);
 			if(kernelq == 0){
@@ -1219,7 +1301,7 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 			else{
 				sclEnqueueKernel(hardware, pd.setup);
 			}
-			if(++kernelq == 25){
+			if(++kernelq == maxq){
 				// limit cl queue depth and sleep cpu
 				waitOnEvent(hardware, launchEvent);
 				kernelq = 0;
@@ -1235,8 +1317,8 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 			sclSetKernelArg(pd.iterate, 4, sizeof(uint32_t), &nmax);
 			kernel_ms = ProfilesclEnqueueKernel(hardware, pd.iterate);
 			nstart += sd.nstep;
-			double multi = (sd.compute)?(50.0 / kernel_ms):(10.0 / kernel_ms);	// target kernel time 50ms or 10ms
-			uint32_t new_nstep = (uint32_t)( ((double)sd.nstep) * multi);
+			double multi = sd.compute ? 50.0/kernel_ms : 10.0/kernel_ms;	// target kernel time 50ms or 10ms
+			uint32_t new_nstep = (uint32_t)( multi * (double)sd.nstep );
 			if(!new_nstep) new_nstep=1;
 			sd.nstep = new_nstep;
 			fprintf(stderr,"c: %u u: %u t: %u p: %u s: %u n: %u\n", (uint32_t)sd.compute, sd.computeunits, sd.threadcount, sd.range, sd.sstep, sd.nstep);
@@ -1257,7 +1339,7 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 			else{
 				sclEnqueueKernel(hardware, pd.iterate);
 			}
-			if(++kernelq == 25){
+			if(++kernelq == maxq){
 				// limit cl queue depth and sleep cpu
 				waitOnEvent(hardware, launchEvent);
 				kernelq = 0;

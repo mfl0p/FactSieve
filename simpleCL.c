@@ -705,6 +705,19 @@ void sclWrite( sclHard hardware, size_t size, cl_mem buffer, void* hostPointer )
 
 }
 
+void sclWriteNB( sclHard hardware, size_t size, cl_mem buffer, void* hostPointer ) {
+
+	cl_int err;
+
+	err = clEnqueueWriteBuffer( hardware.queue, buffer, CL_FALSE, 0, size, hostPointer, 0, NULL, NULL );
+	if ( err != CL_SUCCESS ) { 
+		printf( "\nclWrite Error\n" );
+		fprintf(stderr, "\nclWrite Error\n" );
+		sclPrintErrorFlags( err );
+	}   
+
+}
+
 void sclRead( sclHard hardware, size_t size, cl_mem buffer, void *hostPointer ) {
 
 	cl_int err;

@@ -5,7 +5,7 @@ LD = $(CC)
 .SUFFIXES: .o .c .h .cl .cpp
 
 VERSION_MAJOR := 1
-VERSION_MINOR := 4
+VERSION_MINOR := 5
 date := $(shell powershell.exe get-date -format FileDate)
 
 APP = FactSieve-win64-v$(VERSION_MAJOR).$(VERSION_MINOR)-$(date).exe

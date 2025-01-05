@@ -67,7 +67,7 @@ ulong add(ulong a, ulong b, ulong p)
 }
 
 __kernel void setup(__global ulong8 * g_prime, __global uint * g_primecount,
-		 	__global uint * g_smallprimes, __global uint2 * g_smallpowers, const uint start, const uint end) {
+		 	__global ulong * g_smallprimes, __global uint2 * g_smallpowers, const uint start, const uint end) {
 
 	const uint gid = get_global_id(0);
 
@@ -95,7 +95,7 @@ __kernel void setup(__global ulong8 * g_prime, __global uint * g_primecount,
 		}
 		for(; i<end; ++i){
 			// remaining iterations, starting at prime = 3
-			uint sm_prime = g_smallprimes[i];
+			ulong sm_prime = g_smallprimes[i];
 			// .s0=exp, .s1=curBit
 			uint2 p = g_smallpowers[i];
 			const ulong base = m_mul(sm_prime, prime.s2, prime.s0, prime.s1);

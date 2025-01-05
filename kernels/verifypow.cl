@@ -64,7 +64,7 @@ ulong add(ulong a, ulong b, ulong p)
 
 __kernel __attribute__ ((reqd_work_group_size(256, 1, 1))) void verifypow(
 						__global ulong8 * g_prime,
-						__global uint * g_smallprimes,
+						__global ulong * g_smallprimes,
 						__global uint2 * g_smallpowers,
 						__global ulong4 * g_verify,
 						const uint smallcount) {
@@ -79,7 +79,7 @@ __kernel __attribute__ ((reqd_work_group_size(256, 1, 1))) void verifypow(
 	ulong thread_total = prime.s3;
 
 	for(uint position = gid; position < smallcount; position+=gs){
-		uint sm_prime = g_smallprimes[position];
+		ulong sm_prime = g_smallprimes[position];
 		// .s0=exp, .s1=curBit
 		uint2 p = g_smallpowers[position];
 		const ulong base = m_mul(sm_prime, prime.s2, prime.s0, prime.s1);

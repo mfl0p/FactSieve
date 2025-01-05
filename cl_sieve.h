@@ -9,7 +9,7 @@ typedef struct {
 
 typedef struct {
 	uint64_t maxmalloc;
-	uint32_t computeunits, nstep, sstep, numresults, threadcount, range, psize, numgroups;
+	uint32_t computeunits, nstep, sstep, smcount, numresults, threadcount, range, psize, numgroups;
 	bool test, compute, write_state_a_next;
 }searchData;
 
