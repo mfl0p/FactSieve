@@ -1,6 +1,6 @@
 /*
 	FactSieve
-	Bryan Little, Jun 2024
+	Bryan Little, Feb 2025
 	
 	with contributions by Yves Gallot, Mark Rodenkirch, and Kim Walisch
 
@@ -45,23 +45,17 @@
 
 
 
-void handle_trickle_up(workStatus & st)
-{
+void handle_trickle_up(workStatus & st){
 	if(boinc_is_standalone()) return;
-
 	uint64_t now = (uint64_t)time(NULL);
-
 	if( (now-st.last_trickle) > 86400 ){	// Once per day
-
 		st.last_trickle = now;
-
 		double progress = boinc_get_fraction_done();
 		double cpu;
 		boinc_wu_cpu_time(cpu);
 		APP_INIT_DATA init_data;
 		boinc_get_init_data(init_data);
 		double run = boinc_elapsed_time() + init_data.starting_elapsed_time;
-
 		char msg[512];
 		sprintf(msg, "<trickle_up>\n"
 			    "   <progress>%lf</progress>\n"
@@ -73,17 +67,13 @@ void handle_trickle_up(workStatus & st)
 		sprintf(variety, "factsieve_progress");
 		boinc_send_trickle_up(variety, msg);
 	}
-
 }
 
 
-FILE *my_fopen(const char * filename, const char * mode)
-{
+FILE *my_fopen(const char * filename, const char * mode){
 	char resolved_name[512];
-
 	boinc_resolve_filename(filename,resolved_name,sizeof(resolved_name));
 	return boinc_fopen(resolved_name,mode);
-
 }
 
 
@@ -432,125 +422,93 @@ void findWheelOffset(uint64_t & start, int32_t & index){
 
 
 int factorcompare(const void *a, const void *b) {
-  
-	cl_ulong2 *factA = (cl_ulong2 *)a;
-	cl_ulong2 *factB = (cl_ulong2 *)b;
-
-	if(factB->s0 < factA->s0){
+  	factor *factA = (factor *)a;
+	factor *factB = (factor *)b;
+	if(factB->p < factA->p){
 		return 1;
 	}
-	else if(factB->s0 == factA->s0){
-		int32_t nA = (int32_t)factA->s1;
-		if(nA < 0)nA=-nA;
-		int32_t nB = (int32_t)factB->s1;
-		if(nB < 0)nB=-nB;
+	else if(factB->p == factA->p){
+		int32_t nA = (factA->nc < 0) ? -factA->nc : factA->nc;
+		int32_t nB = (factB->nc < 0) ? -factB->nc : factB->nc;
 		if(nB < nA){
 			return 1;
 		}
 	}
-
 	return -1;
 }
 
 
 void getResults( progData & pd, workStatus & st, searchData & sd, sclHard hardware, uint64_t * h_checksum, uint32_t * h_primecount ){
-
 	// copy checksum and total prime count to host memory, non-blocking
 	sclReadNB(hardware, sd.numgroups*sizeof(uint64_t), pd.d_sum, h_checksum);
 	// copy prime count to host memory, blocking
 	sclRead(hardware, 6*sizeof(uint32_t), pd.d_primecount, h_primecount);
-
 	// index 0 is the gpu's total prime count
 	st.primecount += h_checksum[0];
-
 	// sum blocks
 	for(uint32_t i=1; i<sd.numgroups; ++i){
 		st.checksum += h_checksum[i];
 	}
-
 	// largest kernel prime count.  used to check array bounds
 	if(h_primecount[1] > sd.psize){
 		fprintf(stderr,"error: gpu prime array overflow\n");
 		printf("error: gpu prime array overflow\n");
 		exit(EXIT_FAILURE);
 	}
-
 	// flag set if there is a gpu overflow error
 	if(h_primecount[4] == 1){
 		fprintf(stderr,"error: getsegprimes kernel local memory overflow\n");
 		printf("error: getsegprimes kernel local memory overflow\n");
 		exit(EXIT_FAILURE);
 	}
-
 	// flag set if there is a gpu validation failure
 	if(h_primecount[5] == 1){
 		fprintf(stderr,"error: gpu validation failure\n");
 		printf("error: gpu validation failure\n");
 		exit(EXIT_FAILURE);
 	}
-
 	uint32_t numfactors = h_primecount[2];
-
 	if(numfactors > 0){
-
 		if(boinc_is_standalone()){
 			printf("processing %u factors on CPU\n", numfactors);
 		}
-
 		if(numfactors > sd.numresults){
 			fprintf(stderr,"Error: number of results (%u) overflowed array.\n", numfactors);
 			exit(EXIT_FAILURE);
 		}
-
-		cl_ulong2 * h_factor = (cl_ulong2 *)malloc(numfactors * sizeof(cl_ulong2));
+		factor * h_factor = (factor *)malloc(numfactors * sizeof(factor));
 		if( h_factor == NULL ){
 			fprintf(stderr,"malloc error: h_factor\n");
 			exit(EXIT_FAILURE);
 		}
-
 		// copy factors to host memory, blocking
-		sclRead(hardware, numfactors * sizeof(cl_ulong2), pd.d_factor, h_factor);
-
+		sclRead(hardware, numfactors * sizeof(factor), pd.d_factor, h_factor);
 		// sort results by prime size if needed
 		if(numfactors > 1){
 			if(boinc_is_standalone()){
 				printf("sorting factors\n");
 			}
-			qsort(h_factor, numfactors, sizeof(cl_ulong2), factorcompare);
+			qsort(h_factor, numfactors, sizeof(factor), factorcompare);
 		}
-
 		// verify all factors on CPU using slow test
 		if(boinc_is_standalone()){
 			printf("Verifying factors on CPU...\n");
 		}
 		double last = 0.0;
 		uint32_t tested = 0;
-
 		#pragma omp parallel for
 		for(uint32_t i=0; i<numfactors; ++i){
-			uint64_t fp = h_factor[i].s0;
-			// need to convert .s1 to N and C, this is done for a single memory copy of the factor array
-			int32_t j = (int32_t)h_factor[i].s1;
-			uint32_t fn; 
-			int32_t fc;
-			if(j < 0){
-				fn = -j;
-				fc = -1;
-			}
-			else{
-				fn = j;
-				fc = 1;
-			}
-			if( verify( fp, fn, fc ) == false ){
+			uint64_t fp = h_factor[i].p;
+			uint32_t fn = (h_factor[i].nc < 0) ? -h_factor[i].nc : h_factor[i].nc; 
+			int32_t fc = (h_factor[i].nc < 0) ? -1 : 1;
+			if( !verify( fp, fn, fc ) ){
 				fprintf(stderr,"CPU factor verification failed!  %" PRIu64 " is not a factor of %u!%+d\n", fp, fn, fc);
 				printf("\nCPU factor verification failed!  %" PRIu64 " is not a factor of %u!%+d\n", fp, fn, fc);
 				exit(EXIT_FAILURE);
 			}
-
 			if(boinc_is_standalone()){
 				#pragma omp atomic
 				++tested;
-
 				double done = (double)(tested+1) / (double)numfactors * 100.0;
 				if(done > last+0.1){
 					last = done;
@@ -558,58 +516,32 @@ void getResults( progData & pd, workStatus & st, searchData & sd, sclHard hardwa
 					fflush(stdout);
 				}
 			}
-
 		}
-
 		fprintf(stderr,"Verified %u factors.\n", numfactors);
 		if(boinc_is_standalone()){
 			printf("\rVerified %u factors.\n", numfactors);
 		}
-
 		// write factors to file
 		FILE * resfile = my_fopen(RESULTS_FILENAME,"a");
-
 		if( resfile == NULL ){
 			fprintf(stderr,"Cannot open %s !!!\n",RESULTS_FILENAME);
 			exit(EXIT_FAILURE);
 		}
-
 		if(boinc_is_standalone()){
 			printf("writing factors to %s\n", RESULTS_FILENAME);
 		}
-
 		uint64_t lastgoodp = 0;
-
 		for(uint32_t i=0; i<numfactors; ++i){
-			uint64_t fp = h_factor[i].s0;
-			int32_t j = (int32_t)h_factor[i].s1;
-			uint32_t fn; 
-			int32_t fc;
-			if(j < 0){
-				fn = -j;
-				fc = -1;
-			}
-			else{
-				fn = j;
-				fc = 1;
-			}
-
-			if( fp == lastgoodp ){		// avoid primality testing twice
-				++st.factorcount;
-				if( fprintf( resfile, "%" PRIu64 " | %u!%+d\n",fp,fn,fc) < 0 ){
-					fprintf(stderr,"Cannot write to %s !!!\n",RESULTS_FILENAME);
-					exit(EXIT_FAILURE);
-				}
-				// add the factor to checksum
-				st.checksum += fn + fc;
-			}
-			else if( isPrime(fp) ){
+			uint64_t fp = h_factor[i].p;
+			uint32_t fn = (h_factor[i].nc < 0) ? -h_factor[i].nc : h_factor[i].nc; 
+			int32_t fc = (h_factor[i].nc < 0) ? -1 : 1;
+			if( fp == lastgoodp || isPrime(fp) ){	// gpu generates 2-PRPs, we only want prime factors
 				lastgoodp = fp;
 				++st.factorcount;
 				if( fprintf( resfile, "%" PRIu64 " | %u!%+d\n",fp,fn,fc) < 0 ){
 					fprintf(stderr,"Cannot write to %s !!!\n",RESULTS_FILENAME);
 					exit(EXIT_FAILURE);
-				}				
+				}
 				// add the factor to checksum
 				st.checksum += fn + fc;
 			}
@@ -618,12 +550,9 @@ void getResults( progData & pd, workStatus & st, searchData & sd, sclHard hardwa
 				printf("discarded 2-PRP factor %" PRIu64 "\n", fp);
 			}	
 		}
-
 		fclose(resfile);
 		free(h_factor);
-
 	}
-
 }
 
 
@@ -687,7 +616,7 @@ void setupSearch(workStatus & st, searchData & sd){
 
 
 
-void profileGPU(progData & pd, workStatus & st, searchData & sd, sclHard hardware, int debuginfo ){
+void profileGPU(progData & pd, workStatus & st, searchData & sd, sclHard hardware){
 
 	// calculate approximate chunk size based on gpu's compute units
 	cl_int err = 0;
@@ -699,10 +628,7 @@ void profileGPU(progData & pd, workStatus & st, searchData & sd, sclHard hardwar
 		calc_range = 4294900000;
 	}
 
-	uint64_t estimated = calc_range;
-
 	uint64_t start = st.p;
-
 	uint64_t stop = start + calc_range;
 
 	// check overflow at 2^64
@@ -736,7 +662,6 @@ void profileGPU(progData & pd, workStatus & st, searchData & sd, sclHard hardwar
 
 	int32_t wheelidx;
 	uint64_t kernel_start = start;
-
 	findWheelOffset(kernel_start, wheelidx);
 
 	// set static args
@@ -764,10 +689,6 @@ void profileGPU(progData & pd, workStatus & st, searchData & sd, sclHard hardwar
 		calc_range = 4294900000;
 	}
 
-	if(debuginfo){
-		printf("pgen %" PRIu64 " %" PRIu64 "\n",estimated,calc_range);
-	}
-
 	// get a count of primes in the new gpu worksize
 	stop = start + calc_range;
 
@@ -781,6 +702,8 @@ void profileGPU(progData & pd, workStatus & st, searchData & sd, sclHard hardwar
 
 	// calculate prime array size based on result
 	mem_size = (uint64_t)( 1.5 * (double)range_primes );
+	// make it a multiple of check kernel's local size
+	mem_size = (mem_size / pd.check.local_size[0]) * pd.check.local_size[0];	
 
 	if(mem_size > UINT32_MAX){
 		fprintf(stderr, "ERROR: mem_size too large.\n");
@@ -912,12 +835,10 @@ void setupPowerTable(progData & pd, workStatus & st, searchData & sd, sclHard ha
 	sclReleaseMemObject(pd.d_SmallPowers);
 
 	// compress the power table by combining primes with the same power.  note the new prime array is 64 bit
-	uint32_t k;
-	uint64_t m=0;
 	// skip prime = 2
-	h_newp[m] = smlist[m];
-	h_newpow[m] = h_pow[m];
-	++m;
+	h_newp[0] = smlist[0];
+	h_newpow[0] = h_pow[0];
+	uint32_t k, m=1;
 	for(uint32_t j=m; j<sd.smcount; ){
 		h_newp[m] = smlist[j];
 		h_newpow[m] = h_pow[j];
@@ -934,13 +855,13 @@ void setupPowerTable(progData & pd, workStatus & st, searchData & sd, sclHard ha
 		++m;
 	}
 
-	fprintf(stderr,"Compressed %u power table terms to %u\n",sd.smcount,(uint32_t)m);
+	fprintf(stderr,"Compressed %u power table terms to %u\n",sd.smcount,m);
 	if(boinc_is_standalone()){
-		printf("Compressed %u power table terms to %u\n",sd.smcount,(uint32_t)m);
+		printf("Compressed %u power table terms to %u\n",sd.smcount,m);
 	}
 
-	size_pri = m*sizeof(cl_ulong);
-	size_pow = m*sizeof(cl_uint2);
+	size_pri = sizeof(cl_ulong)*(uint64_t)m;
+	size_pow = sizeof(cl_uint2)*(uint64_t)m;
 	sd.smcount = m;
 
 	pd.d_SmallPrimes = clCreateBuffer( hardware.context, CL_MEM_READ_ONLY, size_pri, NULL, &err );
@@ -1031,9 +952,7 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 
 	progData pd = {};
 	bool first_iteration = true;
-	bool debuginfo = false;
-	time_t boinc_last, boinc_curr;
-	time_t ckpt_curr, ckpt_last;
+	time_t boinc_last, ckpt_last, time_curr;
 	cl_int err = 0;
 
 	// setup kernel parameters
@@ -1046,32 +965,30 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
                 printf( "ERROR: clCreateBuffer failure.\n" );
 		exit(EXIT_FAILURE);
 	}
-        pd.d_factor = clCreateBuffer( hardware.context, CL_MEM_READ_WRITE, sd.numresults*sizeof(cl_ulong2), NULL, &err );
+        pd.d_factor = clCreateBuffer( hardware.context, CL_MEM_READ_WRITE, sd.numresults*sizeof(factor), NULL, &err );
         if ( err != CL_SUCCESS ) {
 		fprintf(stderr, "ERROR: clCreateBuffer failure: d_factor array.\n");
                 printf( "ERROR: clCreateBuffer failure.\n" );
 		exit(EXIT_FAILURE);
 	}
 
-        pd.clearn = sclGetCLSoftware(clearn_cl,"clearn",hardware, 1, debuginfo);
-        pd.clearresult = sclGetCLSoftware(clearresult_cl,"clearresult",hardware, 1, debuginfo);
-        pd.powers = sclGetCLSoftware(powers_cl,"powers",hardware, 1, debuginfo);
-        pd.setup = sclGetCLSoftware(setup_cl,"setup",hardware, 1, debuginfo);
-        pd.iterate = sclGetCLSoftware(iterate_cl,"iterate",hardware, 1, debuginfo);
-        pd.check = sclGetCLSoftware(check_cl,"check",hardware, 1, debuginfo);
-        pd.verifyslow = sclGetCLSoftware(verifyslow_cl,"verifyslow",hardware, 1, debuginfo);
-        pd.verifypow = sclGetCLSoftware(verifypow_cl,"verifypow",hardware, 1, debuginfo);
-        pd.verifyreduce = sclGetCLSoftware(verifyreduce_cl,"verifyreduce",hardware, 1, debuginfo);
-        pd.verifyresult = sclGetCLSoftware(verifyresult_cl,"verifyresult",hardware, 1, debuginfo);
+        pd.clearn = sclGetCLSoftware(clearn_cl,"clearn",hardware, NULL);
+        pd.clearresult = sclGetCLSoftware(clearresult_cl,"clearresult",hardware, NULL);
+        pd.powers = sclGetCLSoftware(powers_cl,"powers",hardware, NULL);
+        pd.setup = sclGetCLSoftware(setup_cl,"setup",hardware, NULL);
+        pd.iterate = sclGetCLSoftware(iterate_cl,"iterate",hardware, NULL);
+        pd.check = sclGetCLSoftware(check_cl,"check",hardware, NULL);
+        pd.verifyslow = sclGetCLSoftware(verifyslow_cl,"verifyslow",hardware, NULL);
+        pd.verifypow = sclGetCLSoftware(verifypow_cl,"verifypow",hardware, NULL);
+        pd.verifyreduce = sclGetCLSoftware(verifyreduce_cl,"verifyreduce",hardware, NULL);
+        pd.verifyresult = sclGetCLSoftware(verifyresult_cl,"verifyresult",hardware, NULL);
 
 	if(st.pmax < 0xFFFFFFFFFF000000){
-		// faster kernel with no overflow checking
-	        pd.getsegprimes = sclGetCLSoftware(getsegprimes_cl,"getsegprimes",hardware, 1, debuginfo);
+	        pd.getsegprimes = sclGetCLSoftware(getsegprimes_cl,"getsegprimes",hardware, NULL);
 	}
 	else{
-		// use kernel that has overflow checking near 2^64
-        	pd.getsegprimes = sclGetCLSoftware(getsegprimes_cl,"getsegprimesmax",hardware, 1, debuginfo);
-		fprintf(stderr, "using pmax kernel\n");
+		const char * options = "-D CKOVERFLOW=1";
+	       	pd.getsegprimes = sclGetCLSoftware(getsegprimes_cl,"getsegprimes",hardware, options );
 	}
 
 
@@ -1148,10 +1065,10 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 	sclSetKernelArg(pd.clearn, 0, sizeof(cl_mem), &pd.d_primecount);
 	sclSetGlobalSize( pd.clearn, 64 );
 
-	profileGPU(pd,st,sd,hardware,debuginfo);
+	profileGPU(pd,st,sd,hardware);
 
 	// number of gpu workgroups, used to size the sum array on gpu
-	sd.numgroups = (sd.psize / pd.check.local_size[0]) + 2;
+	sd.numgroups = (sd.psize / pd.check.local_size[0]) + 1;
 
 	// host arrays used for data transfer from gpu during checkpoints
 	uint64_t * h_checksum = (uint64_t *)malloc(sd.numgroups*sizeof(uint64_t));
@@ -1203,8 +1120,7 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 	sclSetKernelArg(pd.check, 0, sizeof(cl_mem), &pd.d_primes);
 	sclSetKernelArg(pd.check, 1, sizeof(cl_mem), &pd.d_primecount);
 	sclSetKernelArg(pd.check, 2, sizeof(cl_mem), &pd.d_sum);
-	sclSetKernelArg(pd.check, 3, sizeof(uint32_t), &sd.numgroups);
-	sclSetKernelArg(pd.check, 4, sizeof(uint32_t), &st.nmax);
+	sclSetKernelArg(pd.check, 3, sizeof(uint32_t), &st.nmax);
 
 	time(&boinc_last);
 	time(&ckpt_last);
@@ -1232,31 +1148,29 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 
 		// clear prime count
 		sclEnqueueKernel(hardware, pd.clearn);
-
-		// update BOINC fraction done every 2 sec
-		time(&boinc_curr);
-		if( ((int)boinc_curr - (int)boinc_last) > 1 ){
+		
+		time(&time_curr);
+		if( ((int)time_curr - (int)boinc_last) > 1 ){
+			// update BOINC fraction done every 2 sec
     			double fd = (double)(st.p-st.pmin)*irsize;
 			boinc_fraction_done(fd);
 			if(boinc_is_standalone()) printf("Sieve Progress: %.1f%%\n",fd*100.0);
-			boinc_last = boinc_curr;
-		}
-
-		// 1 minute checkpoint
-		time(&ckpt_curr);
-		if( ((int)ckpt_curr - (int)ckpt_last) > 60 ){
-			if(kernelq > 0){
-				waitOnEvent(hardware, launchEvent);
-				kernelq = 0;
+			boinc_last = time_curr;
+			if( ((int)time_curr - (int)ckpt_last) > 60 ){
+				// 1 minute checkpoint
+				if(kernelq > 0){
+					waitOnEvent(hardware, launchEvent);
+					kernelq = 0;
+				}
+				sleepCPU(hardware);
+				boinc_begin_critical_section();
+				getResults(pd, st, sd, hardware, h_checksum, h_primecount);
+				checkpoint(st, sd);
+				boinc_end_critical_section();
+				ckpt_last = time_curr;
+				// clear result arrays
+				sclEnqueueKernel(hardware, pd.clearresult);
 			}
-			sleepCPU(hardware);
-			boinc_begin_critical_section();
-			getResults(pd, st, sd, hardware, h_checksum, h_primecount);
-			checkpoint(st, sd);
-			boinc_end_critical_section();
-			ckpt_last = ckpt_curr;
-			// clear result arrays
-			sclEnqueueKernel(hardware, pd.clearresult);
 		}
 
 		// get a segment of primes (2-PRPs).  very fast, target kernel time is 1ms
@@ -1321,9 +1235,9 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 			uint32_t new_nstep = (uint32_t)( multi * (double)sd.nstep );
 			if(!new_nstep) new_nstep=1;
 			sd.nstep = new_nstep;
-			fprintf(stderr,"c: %u u: %u t: %u p: %u s: %u n: %u\n", (uint32_t)sd.compute, sd.computeunits, sd.threadcount, sd.range, sd.sstep, sd.nstep);
+			fprintf(stderr,"c:%u u:%u t:%u r:%u p:%u s:%u n:%u\n", (uint32_t)sd.compute, sd.computeunits, sd.threadcount, sd.range, sd.psize, sd.sstep, sd.nstep);
 			if(boinc_is_standalone()){
-				printf("c: %u u: %u t: %u p: %u s: %u n: %u\n", (uint32_t)sd.compute, sd.computeunits, sd.threadcount, sd.range, sd.sstep, sd.nstep);
+				printf("c:%u u:%u t:%u r:%u p:%u s:%u n:%u\n", (uint32_t)sd.compute, sd.computeunits, sd.threadcount, sd.range, sd.psize, sd.sstep, sd.nstep);
 			}
 		}
 
@@ -1346,8 +1260,6 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 			}
 		}
 
-
-
 		// checksum kernel
 		sclEnqueueKernel(hardware, pd.check);
 
@@ -1361,7 +1273,6 @@ void cl_sieve( sclHard hardware, workStatus & st, searchData & sd ){
 		}
 
 	}
-
 
 	// final checkpoint
 	if(kernelq > 0){

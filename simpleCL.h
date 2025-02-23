@@ -79,7 +79,7 @@ void			sclRead( sclHard hardware, size_t size, cl_mem buffer, void *hostPointer 
 /* ######################################################## */
 
 /* ####### inicialization of sclSoft structs  ############## */
-sclSoft 		sclGetCLSoftware( const char* source, const char* name, sclHard hardware, int opt, int debuginfo );
+sclSoft 		sclGetCLSoftware( const char* source, const char* name, sclHard hardware, const char * options );
 
 /* ######################################################## */
 
@@ -125,7 +125,7 @@ void 			sclSetKernelArg( sclSoft software, int argnum, size_t typeSize, void *ar
 /* INTERNAL FUNCITONS */
 
 /* ####### cl software management ######################### */
-void 			_sclBuildProgram( cl_program program, cl_device_id devices, const char* pName, int opt );
+void 			_sclBuildProgram( cl_program program, cl_device_id devices, const char* pName, const char * options );
 cl_kernel 		_sclCreateKernel( sclSoft software );
 cl_program 		_sclCreateProgram( const char* program_source, cl_context context );
 char* 			_sclLoadProgramSource( const char *filename );

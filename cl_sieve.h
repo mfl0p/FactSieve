@@ -2,17 +2,20 @@
 // cl_sieve.h
 
 typedef struct {
+	cl_ulong p;
+	cl_int nc;
+}factor;
+
+typedef struct {
 	uint64_t pmin, pmax, p, checksum, primecount, factorcount, last_trickle, state_sum;
 	uint32_t nmin, nmax;
 }workStatus;
-
 
 typedef struct {
 	uint64_t maxmalloc;
 	uint32_t computeunits, nstep, sstep, smcount, numresults, threadcount, range, psize, numgroups;
 	bool test, compute, write_state_a_next;
 }searchData;
-
 
 typedef struct {
 	cl_mem d_factor;

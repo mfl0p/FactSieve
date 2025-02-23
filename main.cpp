@@ -1,6 +1,6 @@
 /*
 	FactSieve
-	Bryan Little, Jun 2024
+	Bryan Little, Feb 2025
 	
 	with contributions by Yves Gallot, Mark Rodenkirch, and Kim Walisch
 
@@ -320,7 +320,6 @@ int main(int argc, char *argv[])
 	char nvidia_s[] = "NVIDIA";	
 
 	if(strstr((char*)device_vend, (char*)nvidia_s) != NULL){
-
 #ifdef _WIN32
 		// pascal or newer gpu on windows 10,11 allows long kernel runtimes without screen refresh issues
 
@@ -370,7 +369,6 @@ int main(int argc, char *argv[])
 	}
 	// Intel
 	else if( strstr((char*)device_vend, (char*)intel_s) != NULL ){
-
 		if( strstr((char*)device_name, (char*)arc_s) != NULL ){
 			sd.computeunits /= 10;
 		}
@@ -378,27 +376,20 @@ int main(int argc, char *argv[])
 			sd.computeunits /= 20;
 	                fprintf(stderr,"Detected Intel integrated graphics\n");	
 		}
-
 	}
 	// AMD
         else{
 		sd.computeunits /= 2;
         }
 
-
-	if(!sd.computeunits){
-		sd.computeunits++;
-	}
-
+	if(!sd.computeunits) sd.computeunits++;
 	
-	if(sd.test == true){
+	if(sd.test){
 		run_test(hardware, st, sd);
-
 	}
 	else{
 		cl_sieve(hardware, st, sd);
 	}
-
 
         sclReleaseClHard(hardware);
 

@@ -426,27 +426,17 @@ cl_program _sclCreateProgram( const char* program_source, cl_context context )
 	return program;
 }
 
-void _sclBuildProgram( cl_program program, cl_device_id devices, const char* pName, int opt )
+void _sclBuildProgram( cl_program program, cl_device_id devices, const char* pName, const char * options )
 {
 	cl_int err;
 	char build_c[4096];
 	
-//	err = clBuildProgram( program, 0, NULL, NULL, NULL, NULL );
-
-	if(opt){
-		err = clBuildProgram( program, 0, NULL, NULL, NULL, NULL );
-	}
-	else{
-		err = clBuildProgram( program, 0, NULL, "-cl-opt-disable", NULL, NULL );
-	}
-
+	err = clBuildProgram( program, 0, NULL, options, NULL, NULL );
 
 	// print nvidia kernel buld log
 //	err = clBuildProgram( program, 0, NULL, "-cl-nv-verbose", NULL, NULL );
 //	clGetProgramBuildInfo( program, devices, CL_PROGRAM_BUILD_LOG, 4096, build_c, NULL );
 //	printf( "Build Log for %s_program:\n%s\n", pName, build_c );
-
-
 
    	if ( err != CL_SUCCESS ) {
 		printf( "Error on buildProgram " );
@@ -638,18 +628,9 @@ unsigned long int _sclGetMaxGlobalMemSize( cl_device_id device ){
 }
 
 
-sclSoft sclGetCLSoftware( const char* source, const char* name, sclHard hardware, int opt, int debuginfo ){
+sclSoft sclGetCLSoftware( const char* source, const char* name, sclHard hardware, const char * options ){
 
 	sclSoft software;
-
-	if(debuginfo){
-		if(opt){
-			printf("Compiling %s...\n", name);
-		}
-		else{
-			printf("Compiling %s with -cl-opt-disable...\n", name);
-		}
-	}
 
 	sprintf( software.kernelName, "%s", name);
 	
@@ -660,7 +641,7 @@ sclSoft sclGetCLSoftware( const char* source, const char* name, sclHard hardware
 	
 	/* Build the program (compile it)
    	 ############################################ */
-   	_sclBuildProgram( software.program, hardware.device, name, opt );
+   	_sclBuildProgram( software.program, hardware.device, name, options );
    	/* ############################################ */
    	
    	/* Create the kernel object
@@ -681,10 +662,6 @@ sclSoft sclGetCLSoftware( const char* source, const char* name, sclHard hardware
 	}
 
 	software.local_size[0] = workgroupsize;
-
-	if(debuginfo){
-		printf("\tKernel workgroup size: %u\n", (unsigned int)workgroupsize);
-	}
 
 	return software;
 	
