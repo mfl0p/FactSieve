@@ -24,7 +24,7 @@ typedef struct {
 	cl_mem d_primecount;
 	cl_mem d_SmallPrimes;
 	cl_mem d_SmallPowers;
-	sclSoft check, iterate, clearn, clearresult, setup, getsegprimes, powers, verifyslow, verifypow, verifyreduce, verifyresult;
+	sclSoft check, iterate, clearn, clearresult, setup, getsegprimes, verifyslow, verifypow, verifyreduce, verifyresult;
 }progData;
 
 void cl_sieve( sclHard hardware, workStatus & st, searchData & sd );
